@@ -4,7 +4,8 @@ User Profile and Brand Profile Services
 File: services.py  
 Author: Anthony Bañon
 Created: 2025-11-29
-Last Updated: 2025-11-29
+Last Updated: 2025-11-30
+Modify: Added business logic for user and brand profile management
 """
 
 from django.db import transaction
@@ -12,6 +13,8 @@ from django.contrib.auth.models import User
 from rest_framework.authtoken.models import Token
 from .models import UserProfile, BrandProfile
 from django.contrib.auth import authenticate
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
 from .constants import *
 
 
@@ -106,6 +109,37 @@ class AuthService:
             return True
         except Exception:
             raise BusinessException("Failed to logout user")
+    
+    @transaction.atomic
+    def change_password(self, user_id, current_password, new_password):
+        """
+        Change user password and delete all tokens
+        """
+        try:
+            user = User.objects.get(id=user_id)
+            
+            # Verify current password
+            if not user.check_password(current_password):
+                raise BusinessException(ERROR_INVALID_CREDENTIALS)
+            
+            # Validate new password
+            try:
+                validate_password(new_password, user)
+            except ValidationError as e:
+                raise BusinessException(str(e))
+            
+            # Set new password and save
+            user.set_password(new_password)
+            user.save()
+            
+            # Delete all tokens to force re-login
+            Token.objects.filter(user=user).delete()
+            
+            return True
+            
+        except User.DoesNotExist:
+            raise BusinessException(ERROR_USER_NOT_FOUND)
+
 
 
 class UserProfileService:
@@ -189,7 +223,7 @@ class UserProfileService:
             raise BusinessException(ERROR_PROFILE_NOT_FOUND)
     
     @transaction.atomic
-    def update_eco_points(self, user_id, points_to_add, carbon_saved=0.0):
+    def update_eco_points(self, user_id, points_to_add, carbon_saved=MIN_CARBON_SAVED):
         """
         Update user's eco points and carbon saved totals
         """
@@ -221,6 +255,36 @@ class UserProfileService:
             
         except UserProfile.DoesNotExist:
             raise BusinessException(ERROR_PROFILE_NOT_FOUND)
+    
+    @transaction.atomic
+    def delete_user(self, user_id):
+        """
+        Delete user account and all associated data
+        """
+        try:
+            user = User.objects.get(id=user_id)
+            
+            # Delete tokens
+            Token.objects.filter(user=user).delete()
+            
+            # Delete brand profile if exists
+            try:
+                user_profile = UserProfile.objects.get(user=user)
+                if user_profile.is_brand_manager:
+                    BrandProfile.objects.filter(user_profile=user_profile).delete()
+                # Delete user profile
+                user_profile.delete()
+            except UserProfile.DoesNotExist:
+                pass  # No profile to delete
+            
+            # Delete user
+            user.delete()
+            
+            return True
+            
+        except User.DoesNotExist:
+            raise BusinessException(ERROR_USER_NOT_FOUND)
+
 
 
 class BrandProfileService:
@@ -263,6 +327,21 @@ class BrandProfileService:
                 'manager_email': user_profile.user.email,
                 'manager_phone': user_profile.phone
             }
+        except UserProfile.DoesNotExist:
+            raise BusinessException(ERROR_NOT_BRAND_MANAGER)
+        except BrandProfile.DoesNotExist:
+            raise BusinessException(ERROR_BRAND_NOT_FOUND)
+    
+    @transaction.atomic
+    def delete_brand_profile(self, user_id):
+        """
+        Delete brand profile (user remains)
+        """
+        try:
+            user_profile = UserProfile.objects.get(user_id=user_id, is_brand_manager=True)
+            brand_profile = BrandProfile.objects.get(user_profile=user_profile)
+            brand_profile.delete()
+            return True
         except UserProfile.DoesNotExist:
             raise BusinessException(ERROR_NOT_BRAND_MANAGER)
         except BrandProfile.DoesNotExist:
