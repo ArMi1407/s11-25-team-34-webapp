@@ -21,6 +21,22 @@ from django.contrib.auth.password_validation import validate_password
 from .models import UserProfile, BrandProfile
 from .constants import *
 
+##### 
+
+class UserLoginSerializer(serializers.Serializer):
+    username = serializers.CharField(required=True)
+    password = serializers.CharField(required=True, write_only=True)
+    
+    def validate_username(self, value):
+        if not value:
+            raise serializers.ValidationError("Username is required")
+        return value
+
+class ChangePasswordSerializer(serializers.Serializer):
+    current_password = serializers.CharField(required=True, write_only=True)
+    new_password = serializers.CharField(required=True, write_only=True, validators=[validate_password])
+
+####### 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(
@@ -62,21 +78,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         if attrs['password'] != attrs['password_confirm']:
             raise serializers.ValidationError({"password_confirm": "Passwords do not match"})
         return attrs
-
-
-class UserLoginSerializer(serializers.Serializer):
-    username = serializers.CharField(required=True)
-    password = serializers.CharField(required=True, write_only=True)
     
-    def validate_username(self, value):
-        if not value:
-            raise serializers.ValidationError("Username is required")
-        return value
-
-class ChangePasswordSerializer(serializers.Serializer):
-    current_password = serializers.CharField(required=True, write_only=True)
-    new_password = serializers.CharField(required=True, write_only=True, validators=[validate_password])
-
 class UserProfileSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source='user.username', read_only=True)
     email = serializers.EmailField(source='user.email', read_only=True)
@@ -131,7 +133,6 @@ class UserProfileUpdateSerializer(serializers.Serializer):
             raise serializers.ValidationError("Phone cannot be empty")
         return value
 
-
 class EcoPointsUpdateSerializer(serializers.Serializer):
     points = serializers.IntegerField(required=True)
     carbon_saved = serializers.FloatField(required=False, default=0.0)
@@ -146,6 +147,7 @@ class EcoPointsUpdateSerializer(serializers.Serializer):
             raise serializers.ValidationError(ERROR_CARBON_EXCEED_LIMIT)
         return value
 
+######
 
 class BrandProfileSerializer(serializers.ModelSerializer):
     manager_name = serializers.SerializerMethodField()

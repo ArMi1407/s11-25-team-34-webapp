@@ -1,0 +1,19 @@
+id,product,category,brand,ingredient_main,base_type,category_climatiq,packaging_material,origin_country,money,money_unit,weight,weight_unit,volume,volume_unit,recyclable_packaging,transportation_type
+1,SilkBalance Emulsion,Emulsion,SkinGlow,Green Tea,water_based,consumer_goods-type_emulsion,plastic_bottle,ARG,15.99,USD,150,g,150.0,ml,True,sea
+2,DeepRecover Emulsion,Emulsion,DermaCare,Rice Extract,water_based,consumer_goods-type_emulsion,plastic_bottle,BRA,18.49,USD,200,g,200.0,ml,True,air
+3,AquaDew Emulsion,Emulsion,PureEssence,Niacinamide,water_based,consumer_goods-type_emulsion,plastic_bottle,KOR,12.75,USD,120,g,120.0,ml,True,sea
+4,Calm Barrier Emulsion,Emulsion,NatureLux,Oat Extract,water_based,consumer_goods-type_emulsion,plastic_bottle,CHN,14.3,USD,180,g,180.0,ml,True,land
+5,RadiantSoft Emulsion,Emulsion,BioRadiance,Vitamin C,water_based,consumer_goods-type_emulsion,glass_container,VNM,20.0,USD,220,g,220.0,ml,True,air
+6,GreenBloom Emulsion,Emulsion,SkinGlow,Avocado Butter,plant_based,consumer_goods-type_emulsion,glass_container,MEX,16.5,USD,160,g,160.0,ml,True,sea
+7,Moisture Veil Emulsion,Emulsion,DermaCare,Aloe Vera,plant_based,consumer_goods-type_emulsion,glass_container,BRA,19.99,USD,210,g,210.0,ml,True,land
+8,PureShield Emulsion,Emulsion,PureEssence,Chamomile,plant_based,consumer_goods-type_emulsion,glass_container,KOR,13.45,USD,130,g,130.0,ml,True,air
+9,FreshGarden Cleanser,Cleanser,NatureLux,Thermal Water,water_based,consumer_goods-type_facial_wash,plastic_tube,ARG,10.99,USD,100,g,,,True,sea
+10,SoftCloud Wash,Cleanser,BioRadiance,Cucumber,water_based,consumer_goods-type_facial_wash,plastic_tube,ARG,11.5,USD,110,g,,,True,land
+11,Calming Leaf Cleanser,Cleanser,SkinGlow,Avocado Oil,oil_based,consumer_goods-type_facial_wash,plastic_tube,CHN,9.75,USD,90,g,,,True,air
+12,CitrusPurify Wash,Cleanser,DermaCare,Olive Oil,oil_based,consumer_goods-type_facial_wash,plastic_tube,VNM,12.0,USD,115,g,,,True,sea
+13,Avene Gentle Cleanser,Cleanser,PureEssence,Shea Butter,oil_based,consumer_goods-type_facial_wash,plastic_tube,MEX,14.2,USD,140,g,,,True,land
+14,EcoPure Soap Bar,Soap,NatureLux,Lavender Oil,oil_based,consumer_goods-type_soaps_and_cleaning_compounds,paper_wrap,BRA,5.99,USD,80,g,,,False,air
+15,Ocean Breeze Bar,Soap,BioRadiance,Coconut Oil,oil_based,consumer_goods-type_soaps_and_cleaning_compounds,paper_wrap,KOR,6.49,USD,85,g,,,False,sea
+16,Lavender Bliss Soap,Soap,SkinGlow,Lemon,plant_based,consumer_goods-type_soaps_and_cleaning_compounds,paper_wrap,CHN,7.25,USD,95,g,,,False,land
+17,Coconut Dream Soap,Soap,DermaCare,Centella Asiatica,plant_based,consumer_goods-type_soaps_and_cleaning_compounds,paper_wrap,VNM,8.0,USD,105,g,,,False,air
+18,Olive Balance Bar,Soap,PureEssence,Bamboo Extract,plant_based,consumer_goods-type_soaps_and_cleaning_compounds,paper_wrap,MEX,6.75,USD,88,g,,,False,sea

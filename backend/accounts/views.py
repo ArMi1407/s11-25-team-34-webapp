@@ -31,41 +31,6 @@ from .services import BusinessException
 
 
 ############# Authentication Views #############
-class RegisterUserView(APIView):
-    """
-    Register a new regular user
-    """
-    permission_classes = [AllowAny]
-    
-    @swagger_auto_schema(request_body=UserRegistrationSerializer)
-    def post(self, request):
-        serializer = UserRegistrationSerializer(data=request.data)
-        
-        if serializer.is_valid():
-            try:
-                user_data = {
-                    'username': serializer.validated_data['username'],
-                    'email': serializer.validated_data['email'],
-                    'password': serializer.validated_data['password'],
-                    'first_name': serializer.validated_data.get('first_name', ''),
-                    'last_name': serializer.validated_data.get('last_name', '')
-                }
-                
-                profile_data = {
-                    'phone': serializer.validated_data.get('phone', '')
-                }
-                
-                result = user_profile_service.register_user(user_data, profile_data)
-                return Response({
-                    'message': SUCCESS_REGISTRATION,
-                    'data': result
-                }, status=status.HTTP_201_CREATED)
-                
-            except BusinessException as e:
-                return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
 
 class LoginUserView(APIView):
     """
@@ -92,7 +57,6 @@ class LoginUserView(APIView):
                 return Response({'error': str(e)}, status=status.HTTP_401_UNAUTHORIZED)
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
 
 class LogoutUserView(APIView):
     """
@@ -134,15 +98,15 @@ class ChangePasswordView(APIView):
 
 ############# User Profile Views #############
 
-class RegisterBrandManagerView(APIView):
+class RegisterUserView(APIView):
     """
-    Register a new brand manager user
+    Register a new regular user
     """
     permission_classes = [AllowAny]
     
-    @swagger_auto_schema(request_body=BrandManagerRegistrationSerializer)
+    @swagger_auto_schema(request_body=UserRegistrationSerializer)
     def post(self, request):
-        serializer = BrandManagerRegistrationSerializer(data=request.data)
+        serializer = UserRegistrationSerializer(data=request.data)
         
         if serializer.is_valid():
             try:
@@ -154,12 +118,11 @@ class RegisterBrandManagerView(APIView):
                     'last_name': serializer.validated_data.get('last_name', '')
                 }
                 
-                brand_data = {
-                    'brand_name': serializer.validated_data['brand_name'],
-                    'sustainability_story': serializer.validated_data.get('sustainability_story', '')
+                profile_data = {
+                    'phone': serializer.validated_data.get('phone', '')
                 }
                 
-                result = brand_profile_service.create_brand_manager(user_data, brand_data)
+                result = user_profile_service.register_user(user_data, profile_data)
                 return Response({
                     'message': SUCCESS_REGISTRATION,
                     'data': result
@@ -255,6 +218,43 @@ class DeleteUserAccountView(APIView):
 
 
 ############## Brand Profile Views #############
+
+class RegisterBrandManagerView(APIView):
+    """
+    Register a new brand manager user
+    """
+    permission_classes = [AllowAny]
+    
+    @swagger_auto_schema(request_body=BrandManagerRegistrationSerializer)
+    def post(self, request):
+        serializer = BrandManagerRegistrationSerializer(data=request.data)
+        
+        if serializer.is_valid():
+            try:
+                user_data = {
+                    'username': serializer.validated_data['username'],
+                    'email': serializer.validated_data['email'],
+                    'password': serializer.validated_data['password'],
+                    'first_name': serializer.validated_data.get('first_name', ''),
+                    'last_name': serializer.validated_data.get('last_name', '')
+                }
+                
+                brand_data = {
+                    'brand_name': serializer.validated_data['brand_name'],
+                    'sustainability_story': serializer.validated_data.get('sustainability_story', '')
+                }
+                
+                result = brand_profile_service.create_brand_manager(user_data, brand_data)
+                return Response({
+                    'message': SUCCESS_REGISTRATION,
+                    'data': result
+                }, status=status.HTTP_201_CREATED)
+                
+            except BusinessException as e:
+                return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
 class GetBrandProfileView(APIView):
     """
     Get current user's brand profile (if brand manager)

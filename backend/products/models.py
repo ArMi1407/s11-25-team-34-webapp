@@ -23,13 +23,19 @@ class Category(models.Model):
         return self.name
 
 class Product(models.Model):
-    # Información básica
+    # Basic Information
     name = models.CharField(max_length=200)
     slug = models.SlugField(unique=True)
     description = models.TextField()
     brand = models.ForeignKey(BrandProfile, on_delete=models.CASCADE)
     category = models.ForeignKey(Category, on_delete=models.CASCADE)
-    
+    climatiq_category = models.CharField(
+        max_length=100,
+        blank=True,
+        default="consumer_goods-type_cosmetics_and_toiletries",
+        help_text="Technical category for API Climatiq"
+    )
+
     # Precio e inventario
     price = models.DecimalField(max_digits=10, decimal_places=2)
     stock = models.IntegerField(default=0)
