@@ -29,20 +29,25 @@ SECRET_KEY = os.getenv('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'True') == 'True'
+USE_CLOUDINARY = os.getenv("USE_CLOUDINARY", "False") == "True"
 
 ALLOWED_HOSTS = ['*']
 
-# Media files settings
+# -------------------------
+# MEDIA CONFIG (local por defecto)
+# -------------------------
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media/')
 
 # Cloudinary configuration
-# DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
-# CLOUDINARY_STORAGE = {
-#     'CLOUD_NAME': 'tu-nombre',
-#     'API_KEY': 'tu-key', 
-#     'API_SECRET': 'tu-secret'
-# }
+if USE_CLOUDINARY:
+    DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
+
+    CLOUDINARY_STORAGE = {
+        'CLOUD_NAME': os.getenv('CLOUD_NAME'),
+        'API_KEY': os.getenv('API_KEY'),
+        'API_SECRET': os.getenv('API_SECRET'),
+    }
 
 # Application definition
 
@@ -53,8 +58,12 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    # Cloudinary for media storage
-    #'cloudinary_storage',
+    # Filtering
+    'django_filters',
+
+    #'cloudinary
+    'cloudinary',
+    'cloudinary_storage',
     
      # Cors stap 1
     "corsheaders",
@@ -198,6 +207,12 @@ REST_FRAMEWORK = {
     # Pagination
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
+
+    'DEFAULT_FILTER_BACKENDS': [
+        'django_filters.rest_framework.DjangoFilterBackend',
+        'rest_framework.filters.SearchFilter',
+        'rest_framework.filters.OrderingFilter',
+    ],
 }
 
 SWAGGER_SETTINGS = {
@@ -211,3 +226,4 @@ SWAGGER_SETTINGS = {
     'DEFAULT_AUTO_SCHEMA_CLASS': 'core.swagger_fix.FixDuplicateSchema',
     'DEFAULT_INFO': 'core.urls.schema_view',
 }
+

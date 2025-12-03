@@ -1,8 +1,11 @@
 asgiref==3.10.0
 certifi==2025.11.12
 charset-normalizer==3.4.4
+cloudinary==1.44.1
 Django==5.2.8
+django-cloudinary-storage==0.3.0
 django-cors-headers==4.9.0
+django-filter==25.2
 djangorestframework==3.16.1
 drf-yasg==1.21.11
 idna==3.11

@@ -4,23 +4,37 @@ Description: Category and Product Models
 File: models.py
 Author: Anthony Bañon
 Created: 2025-11-29
-Last Updated: 2025-11-29
+Last Updated: 2025-12-03
+Modify: Add image field to Category model
 """
 
 
 from django.db import models
 from accounts.models import BrandProfile
+from django.utils.text import slugify
 
 class Category(models.Model):
-    name = models.CharField(max_length=100)
+    name = models.CharField(max_length=100,  unique=True)
     slug = models.SlugField(unique=True)
     description = models.TextField(blank=True)
+    image = models.ImageField(
+        upload_to='categories/', blank=True, null=True,
+        help_text="Representative image of the category"
+    )
     
     class Meta:
         verbose_name_plural = "Categories"
+        ordering = ['name']
     
     def __str__(self):
         return self.name
+
+
+    def save(self, *args, **kwargs):
+        """Auto-generate slug if not provided"""
+        if not self.slug:
+            self.slug = slugify(self.name)
+        super().save(*args, **kwargs)
 
 class Product(models.Model):
     # Basic Information
@@ -36,7 +50,7 @@ class Product(models.Model):
         help_text="Technical category for API Climatiq"
     )
 
-    # Precio e inventario
+    # Price and Stock
     price = models.DecimalField(max_digits=10, decimal_places=2)
     stock = models.IntegerField(default=0)
     is_active = models.BooleanField(default=True)
@@ -54,8 +68,8 @@ class Product(models.Model):
         ('glass_container', 'Glass Container'),
         ('paper_wrap', 'Paper Wrap')
     ])
-    origin_country = models.CharField(max_length=3)  # Código país
-    weight = models.IntegerField()  # en gramos
+    origin_country = models.CharField(max_length=3)  # Country code
+    weight = models.IntegerField()  # in grams
     recyclable_packaging = models.BooleanField(default=True)
     transportation_type = models.CharField(max_length=10, choices=[
         ('air', 'Air'),
@@ -63,12 +77,12 @@ class Product(models.Model):
         ('land', 'Land')
     ])
     
-    # Huellas ambientales calculadas
+    # Calculated Environmental Footprints
     carbon_footprint = models.FloatField(default=0.0)  # kg CO2
     eco_badge = models.CharField(max_length=50, choices=[
-        ('🌱 Bajo impacto', 'Low Impact'),
-        ('🌿 Medio impacto', 'Medium Impact'),
-        ('🌳 Alto impacto', 'High Impact')
+        ('🌱 low Impact', 'Low Impact'),
+        ('🌿 medium Impact', 'Medium Impact'),
+        ('🌳 high Impact', 'High Impact')
     ])
     
     created_at = models.DateTimeField(auto_now_add=True)

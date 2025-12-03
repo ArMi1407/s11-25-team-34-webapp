@@ -8,12 +8,12 @@ router.register(r'profile', views.UserProfileViewSet, basename='userprofile')
 
 urlpatterns = [
     # Authentication
-    path('login/', views.LoginUserView.as_view(), name='login'),
-    path('logout/', views.LogoutUserView.as_view(), name='logout'),
-    path('change-password/', views.ChangePasswordView.as_view(), name='change-password'),
+    path('auth/login/', views.LoginUserView.as_view(), name='login'),
+    path('auth/logout/', views.LogoutUserView.as_view(), name='logout'),
+    path('auth/change-password/', views.ChangePasswordView.as_view(), name='change-password'),
     
     # User Registration
-    path('register/', views.RegisterUserView.as_view(), name='register'),
+    path('auth/register/', views.RegisterUserView.as_view(), name='register'),
     
     # Brand Registration & Operations
     path('brand/register/', views.RegisterBrandManagerView.as_view(), name='register-brand'),

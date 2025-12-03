@@ -124,23 +124,34 @@ class RegisterUserView(generics.CreateAPIView):
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-class UserProfileViewSet(viewsets.GenericViewSet, 
-                         mixins.RetrieveModelMixin,
-                         mixins.UpdateModelMixin):
+class UserProfileViewSet(viewsets.ViewSet):
     """✅ ViewSet for simple user profile CRUD"""
     permission_classes = [IsAuthenticated]
+
+    # Swagger documentation will ignore this queryset
+    def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return UserProfile.objects.none()
+        return UserProfile.objects.filter(user=self.request.user)
+
     
     def get_object(self):
         return UserProfile.objects.get(user=self.request.user)
     
     def get_serializer_class(self):
-        if self.action == 'update':
+        if self.action == 'update_profile':
             return UserProfileUpdateSerializer
         return UserProfileSerializer
+
+    def list(self, request):
+        profile = self.get_object()
+        return Response(UserProfileSerializer(profile).data)
     
-    def update(self, request, *args, **kwargs):
+    @action(detail=False, methods=['patch'])
+    @transaction.atomic
+    def update_profile(self, request):
         instance = self.get_object()
-        serializer = self.get_serializer(data=request.data)
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         
         # Simple update logic in view (no service needed)
@@ -170,13 +181,8 @@ class UserProfileViewSet(viewsets.GenericViewSet,
         points = serializer.validated_data['points']
         carbon_saved = serializer.validated_data.get('carbon_saved', MIN_CARBON_SAVED)
         
-        if abs(points) > MAX_ECO_POINTS_ADDITION:
-            return Response({'error': ERROR_POINTS_EXCEED_LIMIT}, status=status.HTTP_400_BAD_REQUEST)
-        
-        if abs(carbon_saved) > MAX_CARBON_SAVED_ADDITION:
-            return Response({'error': ERROR_CARBON_EXCEED_LIMIT}, status=status.HTTP_400_BAD_REQUEST)
-        
         user_profile = self.get_object()
+        
         user_profile.eco_points += points
         user_profile.total_carbon_saved += carbon_saved
         
