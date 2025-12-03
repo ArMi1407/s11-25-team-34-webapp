@@ -7,19 +7,30 @@ Created: 2025-12-03
 Last Updated: 2025-12-03
 """
 
+"""
+Description: Category Views
+
+File: views.py
+Author: Anthony Bañon
+Created: 2025-12-03
+Last Updated: 2025-12-03
+"""
 
 from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticatedOrReadOnly, IsAdminUser, IsAuthenticated
+from rest_framework.permissions import IsAuthenticatedOrReadOnly, IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.shortcuts import get_object_or_404
-from django.db.models import Q
 
 from .models import Category
 from .serializers import CategorySerializer, CategoryListSerializer, CategoryImageSerializer
-from .services import CategoryService
+from .services import CategoryService, BusinessException
+from .constants import *
+
+import logging
+logger = logging.getLogger(__name__)
 
 
 class CategoryViewSet(viewsets.ModelViewSet):
@@ -30,10 +41,10 @@ class CategoryViewSet(viewsets.ModelViewSet):
     serializer_class = CategorySerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    # Allow parsing of multipart form data for image uploads
     parser_classes = [MultiPartParser, FormParser, JSONParser]
+    
     # Configure filtering and searching
-    filterset_fields = ['slug']  # Fixed: removed non-existent fields
+    filterset_fields = ['slug']
     search_fields = ['name', 'description']
     ordering_fields = ['name', 'id']
     ordering = ['name']
@@ -46,7 +57,6 @@ class CategoryViewSet(viewsets.ModelViewSet):
         """Optimize queryset based on action"""
         queryset = super().get_queryset()
         
-        # For list actions, we can optimize
         if self.action == 'list':
             queryset = queryset.only('id', 'name', 'slug', 'image')
         
@@ -72,35 +82,35 @@ class CategoryViewSet(viewsets.ModelViewSet):
         """Get category by slug"""
         queryset = self.filter_queryset(self.get_queryset())
         
-        # Get slug from URL parameters
         slug = self.kwargs.get('slug')
         if slug:
             obj = get_object_or_404(queryset, slug=slug)
         else:
-            # Fallback to pk
             obj = super().get_object()
         
         self.check_object_permissions(self.request, obj)
         return obj
     
     def destroy(self, request, *args, **kwargs):
-        """Delete a category with additional checks"""
+        """Delete a category"""
         category = self.get_object()
         
-        # Check if category has products before deleting
-        product_count = category.product_set.count()
-        if product_count > 0:
+        try:
+            CategoryService.delete_category(category)
+            return Response(
+                {'detail': SUCCESS_CATEGORY_DELETED},
+                status=status.HTTP_200_OK
+            )
+        except BusinessException as e:
             return Response(
                 {
-                    'detail': f'Cannot delete category with {product_count} products. '
-                             f'Remove or reassign products first.'
+                    'detail': e.message,
+                    'error_code': e.error_code,
+                    'details': e.details
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
-        return super().destroy(request, *args, **kwargs)
     
-
     @action(detail=True, methods=['delete'], url_path='remove-image')
     def remove_image(self, request, slug=None):
         """
@@ -109,20 +119,23 @@ class CategoryViewSet(viewsets.ModelViewSet):
         """
         category = self.get_object()
         
-        success, error_message = CategoryService.delete_category_image(category)
-        
-        if success:
+        try:
+            CategoryService.delete_category_image(category)
             return Response(
-                {'detail': 'Image removed successfully.'},
+                {'detail': SUCCESS_CATEGORY_IMAGE_REMOVED},
                 status=status.HTTP_200_OK
             )
-        else:
+        except BusinessException as e:
             return Response(
-                {'detail': error_message or 'Failed to remove image.'},
+                {
+                    'detail': e.message,
+                    'error_code': e.error_code,
+                    'details': e.details
+                },
                 status=status.HTTP_400_BAD_REQUEST
             )
     
-    @action(detail=True, methods=['put', 'patch'], url_path='upload-image', 
+    @action(detail=True, methods=['put'], url_path='upload-image', 
             parser_classes=[MultiPartParser, FormParser])
     def upload_image(self, request, slug=None):
         """
@@ -133,7 +146,6 @@ class CategoryViewSet(viewsets.ModelViewSet):
         """
         category = self.get_object()
         
-        # Usar el serializer específico para imágenes
         serializer = CategoryImageSerializer(
             category, 
             data=request.data,
@@ -144,7 +156,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
             serializer.save()
             return Response(
                 {
-                    'detail': 'Image uploaded successfully.',
+                    'detail': SUCCESS_CATEGORY_IMAGE_UPLOADED,
                     'image_url': serializer.data['image_url']
                 },
                 status=status.HTTP_200_OK
@@ -152,49 +164,8 @@ class CategoryViewSet(viewsets.ModelViewSet):
         
         return Response(
             {
-                'detail': 'Failed to upload image.',
+                'detail': ERROR_CATEGORY_IMAGE_UPLOAD_FAILED,
                 'errors': serializer.errors
             },
             status=status.HTTP_400_BAD_REQUEST
         )
-    
-    @action(detail=False, methods=['get'])
-    def search(self, request):
-        """
-        Custom search endpoint for categories
-        GET /api/categories/search/?q={query}
-        """
-        query = request.query_params.get('q', '').strip()
-        
-        if len(query) < 2:
-            return Response(
-                {'detail': 'Search query must be at least 2 characters.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Use service for search logic
-        categories = CategoryService.search_categories(query)
-        
-        # Paginate if needed
-        page = self.paginate_queryset(categories)
-        if page is not None:
-            serializer = self.get_serializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
-        
-        serializer = self.get_serializer(categories, many=True)
-        return Response(serializer.data)
-    
-    @action(detail=False, methods=['get'])
-    def stats(self, request):
-        """
-        Get category statistics
-        GET /api/categories/stats/
-        """
-        total_categories = Category.objects.count()
-        categories_with_images = Category.objects.exclude(image='').count()
-        
-        return Response({
-            'total_categories': total_categories,
-            'categories_with_images': categories_with_images,
-            'categories_without_images': total_categories - categories_with_images
-        })

@@ -6,12 +6,24 @@ Author: Anthony Bañon
 Created: 2025-12-03
 Last Updated: 2025-12-03
 """
+"""
+Description: Category Serializers
 
+File: serializers.py
+Author: Anthony Bañon
+Created: 2025-12-03
+Last Updated: 2025-12-03
+"""
 
 from rest_framework import serializers
 from django.utils.text import slugify
+import os
+import logging
 from .models import Category
-from .services import CategoryService
+from .services import CategoryService, BusinessException
+from .constants import *
+
+logger = logging.getLogger(__name__)
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -42,6 +54,24 @@ class CategorySerializer(serializers.ModelSerializer):
             return obj.image.url
         return None
     
+    def validate_name(self, value):
+        """Validate category name"""
+        if len(value) < CATEGORY_NAME_MIN_LENGTH:
+            raise serializers.ValidationError(VALIDATION_CATEGORY_NAME_TOO_SHORT)
+        if len(value) > CATEGORY_NAME_MAX_LENGTH:
+            raise serializers.ValidationError(VALIDATION_CATEGORY_NAME_TOO_LONG)
+        return value
+    
+    def validate_slug(self, value):
+        """Validate slug"""
+        if value and Category.objects.filter(slug=value).exists():
+            if self.instance:
+                if Category.objects.filter(slug=value).exclude(pk=self.instance.pk).exists():
+                    raise serializers.ValidationError(VALIDATION_CATEGORY_SLUG_EXISTS)
+            else:
+                raise serializers.ValidationError(VALIDATION_CATEGORY_SLUG_EXISTS)
+        return value
+    
     def validate(self, data):
         """Custom validation for category data"""
         # Generate slug from name if not provided
@@ -54,43 +84,26 @@ class CategorySerializer(serializers.ModelSerializer):
                 'slug': 'Slug cannot be empty.'
             })
         
-        # Ensure slug is unique (handled by model, but we check anyway)
-        if 'slug' in data:
-            existing = Category.objects.filter(slug=data['slug'])
-            if self.instance:  # Update case
-                existing = existing.exclude(pk=self.instance.pk)
-            if existing.exists():
-                raise serializers.ValidationError({
-                    'slug': 'A category with this slug already exists.'
-                })
-        
         return data
-    
-    def validate_name(self, value):
-        """Validate category name"""
-        if len(value) < 2:
-            raise serializers.ValidationError("Name must be at least 2 characters long.")
-        if len(value) > 100:
-            raise serializers.ValidationError("Name cannot exceed 100 characters.")
-        return value
     
     def create(self, validated_data):
         """Create category using service layer"""
-        
-        
-        category, errors = CategoryService.create_category(validated_data)
-        if errors:
-            raise serializers.ValidationError(errors)
-        return category
+        try:
+            category = CategoryService.create_category(validated_data)
+            return category
+        except BusinessException as e:
+            # Convert BusinessException to serializer validation error
+            raise serializers.ValidationError(e.details)
     
     def update(self, instance, validated_data):
         """Update category using service layer"""
-        
-        
-        updated_category, errors = CategoryService.update_category(instance, validated_data)
-        if errors:
-            raise serializers.ValidationError(errors)
-        return updated_category
+        try:
+            updated_category = CategoryService.update_category(instance, validated_data)
+            return updated_category
+        except BusinessException as e:
+            # Convert BusinessException to serializer validation error
+            raise serializers.ValidationError(e.details)
+
 
 class CategoryImageSerializer(serializers.ModelSerializer):
     """
@@ -118,34 +131,32 @@ class CategoryImageSerializer(serializers.ModelSerializer):
     
     def validate_image(self, value):
         """Validate the uploaded image"""
-        # Check file size (max 5MB)
-        max_size = 5 * 1024 * 1024  # 5MB
-        if value.size > max_size:
+        # Check file size
+        if value.size > CATEGORY_IMAGE_MAX_SIZE_BYTES:
             raise serializers.ValidationError(
-                f"Image size cannot exceed 5MB. Current size: {value.size / 1024 / 1024:.2f}MB"
+                VALIDATION_CATEGORY_IMAGE_TOO_LARGE
             )
         
         # Check file type
-        valid_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
-        import os
         ext = os.path.splitext(value.name)[1].lower()
-        if ext not in valid_extensions:
+        if ext not in CATEGORY_IMAGE_ALLOWED_EXTENSIONS:
             raise serializers.ValidationError(
-                f"Unsupported file format. Supported formats: {', '.join(valid_extensions)}"
+                VALIDATION_CATEGORY_IMAGE_INVALID_FORMAT
             )
         
         return value
     
     def update(self, instance, validated_data):
         """Update category image using service layer"""
-        from .services import CategoryService
-        
-        updated_category, errors = CategoryService.update_category_image(
-            instance, validated_data['image']
-        )
-        if errors:
-            raise serializers.ValidationError(errors)
-        return updated_category
+        try:
+            updated_category = CategoryService.update_category_image(
+                instance, validated_data['image']
+            )
+            return updated_category
+        except BusinessException as e:
+            # Convert BusinessException to serializer validation error
+            raise serializers.ValidationError(e.details)
+
 
 class CategoryListSerializer(CategorySerializer):
     """Simplified serializer for list views"""
