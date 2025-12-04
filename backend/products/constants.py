@@ -144,6 +144,8 @@ ERROR_PRODUCT_INACTIVE = "Product is not active"
 ERROR_PRODUCT_OUT_OF_STOCK = "Product is out of stock"
 ERROR_PRODUCT_IMAGE_UPLOAD_FAILED = "Failed to upload product image"
 ERROR_PRODUCT_BRAND_MISMATCH = "Product does not belong to your brand"
+ERROR_PRODUCT_ACTIVATED = "Product activated successfully"
+ERROR_PRODUCT_DEACTIVATED = "Product deactivated successfully"
 
 # Product Success Messages
 SUCCESS_PRODUCT_CREATED = "Product created successfully"

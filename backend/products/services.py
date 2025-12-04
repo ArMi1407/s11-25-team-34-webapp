@@ -17,13 +17,15 @@ Last Updated: 2025-12-03
 """
 
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils.text import slugify
 from cloudinary.exceptions import Error as CloudinaryError
-from .models import Category
+from .models import Category, Product, ProductImage
+from accounts.models import BrandProfile
 from .constants import *
+import math
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +38,7 @@ class BusinessException(Exception):
         self.details = details or {}
         super().__init__(self.message)
 
+######### Category Services #########
 
 class CategoryService:
     """
@@ -240,5 +243,373 @@ class CategoryService:
             raise BusinessException(
                 "Failed to delete category",
                 error_code='DELETE_ERROR',
+                details={'error': str(e)}
+            )
+
+######### Product Services #########
+
+class ProductService:
+    """
+    Service layer for Product business logic
+    Handles complex operations and data validation
+    """
+    
+    @staticmethod
+    def calculate_carbon_footprint(
+        base_type: str,
+        packaging_material: str,
+        weight: int,
+        transportation_type: str,
+        origin_country: str,
+        recyclable_packaging: bool
+    ) -> float:
+        """
+        Calculate carbon footprint based on product characteristics
+        Returns: carbon footprint in kg CO2
+        """
+        try:
+            # Base carbon factors (kg CO2 per gram)
+            base_factors = {
+                'water_based': 0.0015,
+                'plant_based': 0.0010,
+                'oil_based': 0.0020
+            }
+            
+            # Packaging carbon factors (kg CO2 per gram)
+            packaging_factors = {
+                'plastic_bottle': 0.0025,
+                'plastic_tube': 0.0020,
+                'glass_container': 0.0015,
+                'paper_wrap': 0.0005
+            }
+            
+            # Transportation carbon factors (kg CO2 per gram per km)
+            # Simplified: distance based on origin (EU, NA, ASIA, etc.)
+            # This would be replaced with actual Climatiq API calls
+            transportation_factors = {
+                'air': 0.0005,
+                'sea': 0.00005,
+                'land': 0.0001
+            }
+            
+            # Calculate base material footprint
+            base_factor = base_factors.get(base_type, 0.0015)
+            base_footprint = base_factor * weight
+            
+            # Calculate packaging footprint
+            packaging_factor = packaging_factors.get(packaging_material, 0.0020)
+            packaging_footprint = packaging_factor * (weight * 0.1)  # Estimate packaging weight
+            
+            # Apply recyclable packaging discount
+            if recyclable_packaging:
+                packaging_footprint *= 0.7  # 30% reduction for recyclable
+            
+            # Calculate transportation footprint (simplified)
+            # Assume average distance based on origin
+            distance = 1000  # km - would be calculated based on origin_country
+            transport_factor = transportation_factors.get(transportation_type, 0.0001)
+            transport_footprint = transport_factor * weight * distance
+            
+            # Total carbon footprint
+            total_footprint = base_footprint + packaging_footprint + transport_footprint
+            
+            # Round to 2 decimal places
+            return round(total_footprint, 2)
+            
+        except Exception as e:
+            logger.error(f"Error calculating carbon footprint: {str(e)}")
+            return PRODUCT_DEFAULT_CARBON_FOOTPRINT
+    
+    @staticmethod
+    def determine_eco_badge(carbon_footprint: float) -> str:
+        """
+        Determine eco badge based on carbon footprint
+        """
+        if carbon_footprint <= ECO_BADGE_THRESHOLD_LOW:
+            return '🌱 low Impact'
+        elif carbon_footprint <= ECO_BADGE_THRESHOLD_MEDIUM:
+            return '🌿 medium Impact'
+        else:
+            return '🌳 high Impact'
+    
+    @staticmethod
+    def create_product(data: Dict[str, Any], brand: BrandProfile, images_data: List[Dict] = None) -> Product:
+        """
+        Create a new product with validation and related images
+        Returns: product_instance
+        Raises: BusinessException on error
+        """
+        try:
+            with transaction.atomic():
+                # Validate required fields
+                if not data.get('name'):
+                    raise BusinessException(
+                        VALIDATION_PRODUCT_NAME_REQUIRED,
+                        error_code='NAME_REQUIRED'
+                    )
+                
+                # Auto-generate slug if not provided
+                if 'slug' not in data or not data['slug']:
+                    data['slug'] = slugify(data.get('name', ''))
+                
+                # Check slug uniqueness
+                slug = data.get('slug')
+                if slug and Product.objects.filter(slug=slug).exists():
+                    raise BusinessException(
+                        "Product with this slug already exists",
+                        error_code='SLUG_EXISTS',
+                        details={'slug': slug}
+                    )
+                
+                # Calculate carbon footprint if not provided
+                if 'carbon_footprint' not in data or not data['carbon_footprint']:
+                    data['carbon_footprint'] = ProductService.calculate_carbon_footprint(
+                        base_type=data.get('base_type'),
+                        packaging_material=data.get('packaging_material'),
+                        weight=data.get('weight', 0),
+                        transportation_type=data.get('transportation_type'),
+                        origin_country=data.get('origin_country'),
+                        recyclable_packaging=data.get('recyclable_packaging', True)
+                    )
+                
+                # Determine eco badge
+                if 'eco_badge' not in data or not data['eco_badge']:
+                    data['eco_badge'] = ProductService.determine_eco_badge(
+                        data.get('carbon_footprint', 0.0)
+                    )
+                
+                # Create product
+                product = Product.objects.create(brand=brand, **data)
+                logger.info(f"Product created successfully: {product.name} (ID: {product.id})")
+                
+                # Handle images if provided
+                if images_data:
+                    ProductService._handle_product_images(product, images_data)
+                
+                return product
+                
+        except ValidationError as ve:
+            logger.error(f"Validation error creating product: {ve.message_dict}")
+            raise BusinessException(
+                ERROR_PRODUCT_CREATE_FAILED,
+                error_code='VALIDATION_ERROR',
+                details=ve.message_dict
+            )
+        except BusinessException:
+            raise
+        except Exception as e:
+            logger.error(f"Error creating product: {str(e)}")
+            raise BusinessException(
+                ERROR_PRODUCT_CREATE_FAILED,
+                error_code='CREATE_ERROR',
+                details={'error': str(e)}
+            )
+    
+    @staticmethod
+    def _handle_product_images(product: Product, images_data: List[Dict]) -> None:
+        """
+        Create product images with validation
+        """
+        try:
+            primary_images = 0
+            
+            for image_data in images_data:
+                is_primary = image_data.get('is_primary', False)
+                if is_primary:
+                    primary_images += 1
+                
+                ProductImage.objects.create(
+                    product=product,
+                    image=image_data['image'],
+                    is_primary=is_primary
+                )
+            
+            # Ensure at least one primary image
+            if primary_images == 0 and len(images_data) > 0:
+                # Make first image primary
+                first_image = ProductImage.objects.filter(product=product).first()
+                if first_image:
+                    first_image.is_primary = True
+                    first_image.save()
+            
+            logger.info(f"Created {len(images_data)} images for product: {product.name}")
+            
+        except Exception as e:
+            logger.error(f"Error creating product images: {str(e)}")
+            raise BusinessException(
+                ERROR_PRODUCT_IMAGE_UPLOAD_FAILED,
+                error_code='IMAGE_CREATE_ERROR',
+                details={'error': str(e)}
+            )
+    
+    @staticmethod
+    def update_product(product: Product, data: Dict[str, Any], images_data: Optional[List[Dict]] = None) -> Product:
+        """
+        Update an existing product
+        Returns: updated_product
+        Raises: BusinessException on error
+        """
+        try:
+            with transaction.atomic():
+                # Handle slug update - regenerate if name changes
+                if 'name' in data and data['name'] != product.name:
+                    if 'slug' not in data or not data['slug']:
+                        data['slug'] = slugify(data['name'])
+                
+                # Check slug uniqueness (excluding current product)
+                if 'slug' in data:
+                    slug = data['slug']
+                    if Product.objects.filter(slug=slug).exclude(pk=product.id).exists():
+                        raise BusinessException(
+                            "Product with this slug already exists",
+                            error_code='SLUG_EXISTS',
+                            details={'slug': slug}
+                        )
+                
+                # Recalculate carbon footprint if environmental data changes
+                environmental_fields = ['base_type', 'packaging_material', 'weight', 
+                                      'transportation_type', 'origin_country', 'recyclable_packaging']
+                
+                if any(field in data for field in environmental_fields):
+                    # Use updated values or existing values
+                    base_type = data.get('base_type', product.base_type)
+                    packaging_material = data.get('packaging_material', product.packaging_material)
+                    weight = data.get('weight', product.weight)
+                    transportation_type = data.get('transportation_type', product.transportation_type)
+                    origin_country = data.get('origin_country', product.origin_country)
+                    recyclable_packaging = data.get('recyclable_packaging', product.recyclable_packaging)
+                    
+                    data['carbon_footprint'] = ProductService.calculate_carbon_footprint(
+                        base_type=base_type,
+                        packaging_material=packaging_material,
+                        weight=weight,
+                        transportation_type=transportation_type,
+                        origin_country=origin_country,
+                        recyclable_packaging=recyclable_packaging
+                    )
+                    
+                    # Update eco badge
+                    data['eco_badge'] = ProductService.determine_eco_badge(
+                        data['carbon_footprint']
+                    )
+                
+                # Update product fields
+                for field, value in data.items():
+                    setattr(product, field, value)
+                
+                product.full_clean()
+                product.save()
+                
+                # Handle images if provided
+                if images_data is not None:
+                    ProductService._update_product_images(product, images_data)
+                
+                logger.info(f"Product updated successfully: {product.name} (ID: {product.id})")
+                return product
+                
+        except ValidationError as ve:
+            logger.error(f"Validation error updating product: {ve.message_dict}")
+            raise BusinessException(
+                ERROR_PRODUCT_UPDATE_FAILED,
+                error_code='VALIDATION_ERROR',
+                details=ve.message_dict
+            )
+        except BusinessException:
+            raise
+        except Exception as e:
+            logger.error(f"Error updating product: {str(e)}")
+            raise BusinessException(
+                ERROR_PRODUCT_UPDATE_FAILED,
+                error_code='UPDATE_ERROR',
+                details={'error': str(e)}
+            )
+    
+    @staticmethod
+    def _update_product_images(product: Product, images_data: List[Dict]) -> None:
+        """
+        Update product images - replaces existing images
+        """
+        try:
+            # Delete existing images
+            product.images.all().delete()
+            
+            # Create new images
+            ProductService._handle_product_images(product, images_data)
+            
+            logger.info(f"Updated images for product: {product.name}")
+            
+        except Exception as e:
+            logger.error(f"Error updating product images: {str(e)}")
+            raise BusinessException(
+                ERROR_PRODUCT_IMAGE_UPLOAD_FAILED,
+                error_code='IMAGE_UPDATE_ERROR',
+                details={'error': str(e)}
+            )
+    
+    @staticmethod
+    def delete_product(product: Product, user) -> None:
+        """
+        Delete a product with permission check
+        Raises: BusinessException on error
+        """
+        try:
+            # Check if product belongs to user's brand
+            if product.brand.user != user:
+                raise BusinessException(
+                    ERROR_PRODUCT_BRAND_MISMATCH,
+                    error_code='PERMISSION_DENIED'
+                )
+            
+            # Delete associated images
+            for image in product.images.all():
+                try:
+                    image.image.delete(save=False)
+                except Exception as e:
+                    logger.warning(f"Could not delete product image: {str(e)}")
+            
+            product.delete()
+            logger.info(f"Product deleted: {product.name} (ID: {product.id})")
+            
+        except BusinessException:
+            raise
+        except Exception as e:
+            logger.error(f"Error deleting product: {str(e)}")
+            raise BusinessException(
+                ERROR_PRODUCT_DELETE_FAILED,
+                error_code='DELETE_ERROR',
+                details={'error': str(e)}
+            )
+    
+    @staticmethod
+    def toggle_product_active(product: Product, user, activate: bool) -> Product:
+        """
+        Activate or deactivate a product
+        Returns: updated_product
+        Raises: BusinessException on error
+        """
+        try:
+            # Check if product belongs to user's brand
+            if product.brand.user != user:
+                raise BusinessException(
+                    ERROR_PRODUCT_BRAND_MISMATCH,
+                    error_code='PERMISSION_DENIED'
+                )
+            
+            product.is_active = activate
+            product.save(update_fields=['is_active'])
+            
+            action = "activated" if activate else "deactivated"
+            logger.info(f"Product {action}: {product.name} (ID: {product.id})")
+            
+            return product
+            
+        except BusinessException:
+            raise
+        except Exception as e:
+            logger.error(f"Error toggling product active status: {str(e)}")
+            error_msg = ERROR_PRODUCT_ACTIVATED if activate else ERROR_PRODUCT_DEACTIVATED
+            raise BusinessException(
+                error_msg,
+                error_code='TOGGLE_ERROR',
                 details={'error': str(e)}
             )
