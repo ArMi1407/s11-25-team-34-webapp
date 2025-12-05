@@ -31,6 +31,7 @@ from .serializers import CategorySerializer, CategoryListSerializer, CategoryIma
 from .services import CategoryService, ProductService, BusinessException
 from .constants import *
 from .filters import ProductFilter
+from rest_framework.exceptions import ValidationError
 
 
 import logging
@@ -206,14 +207,14 @@ class ProductViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(is_active=True)
         
         # For brand owners, show all their products
-        if self.request.user.is_authenticated and hasattr(self.request.user, 'brandprofile'):
+        if self.request.user.is_authenticated and hasattr(self.request.user, 'userprofile') and hasattr(self.request.user.userprofile, 'brandprofile'):
             if self.action in ['my_products', 'update', 'partial_update', 'destroy']:
                 # For specific actions, include inactive products for brand owners
-                queryset = queryset.filter(brand=self.request.user.brandprofile)
+                queryset = queryset.filter(brand=self.request.user.userprofile.brandprofile)
             elif self.action == 'list':
                 # In list view, brand owners see their inactive products too
                 if self.request.query_params.get('my_products') == 'true':
-                    queryset = queryset.filter(brand=self.request.user.brandprofile)
+                    queryset = queryset.filter(brand=self.request.user.userprofile.brandprofile)
         
         # Optimize queries - remove prefetch_related('images') as we now have single image
         if self.action == 'list':
@@ -292,7 +293,7 @@ class ProductViewSet(viewsets.ModelViewSet):
         product = self.get_object()
         
         # Check if product belongs to user's brand
-        if not hasattr(request.user, 'brandprofile') or product.brand != request.user.brandprofile:
+        if not hasattr(request.user, 'userprofile') or not hasattr(request.user.userprofile, 'brandprofile') or product.brand != request.user.userprofile.brandprofile:
             return Response(
                 {'detail': ERROR_PRODUCT_BRAND_MISMATCH},
                 status=status.HTTP_403_FORBIDDEN
@@ -364,13 +365,13 @@ class ProductViewSet(viewsets.ModelViewSet):
         Get products belonging to the authenticated user's brand
         GET /api/products/my-products/
         """
-        if not hasattr(request.user, 'brandprofile'):
+        if not hasattr(request.user, 'userprofile') or not hasattr(request.user.userprofile, 'brandprofile'):
             return Response(
                 {'detail': "User does not have a brand profile"},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
-        products = self.get_queryset().filter(brand=request.user.brandprofile)
+
+        products = self.get_queryset().filter(brand=request.user.userprofile.brandprofile)
         
         # Apply filtering
         products = self.filter_queryset(products)
@@ -419,7 +420,7 @@ class ProductViewSet(viewsets.ModelViewSet):
         product = self.get_object()
         
         # Check if product belongs to user's brand
-        if not hasattr(request.user, 'brandprofile') or product.brand != request.user.brandprofile:
+        if not hasattr(request.user, 'userprofile') or not hasattr(request.user.userprofile, 'brandprofile') or product.brand.id != request.user.userprofile.brandprofile.id:
             return Response(
                 {'detail': ERROR_PRODUCT_BRAND_MISMATCH},
                 status=status.HTTP_403_FORBIDDEN
@@ -461,7 +462,7 @@ class ProductViewSet(viewsets.ModelViewSet):
         product = self.get_object()
         
         # Check if product belongs to user's brand
-        if not hasattr(request.user, 'brandprofile') or product.brand != request.user.brandprofile:
+        if not hasattr(request.user, 'userprofile') or not hasattr(request.user.userprofile, 'brandprofile') or product.brand.id != request.user.userprofile.brandprofile.id:
             return Response(
                 {'detail': ERROR_PRODUCT_BRAND_MISMATCH},
                 status=status.HTTP_403_FORBIDDEN

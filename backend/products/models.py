@@ -12,6 +12,8 @@ Modify: Add image field to Category model
 from django.db import models
 from accounts.models import BrandProfile
 from django.utils.text import slugify
+from django.conf import settings
+from cloudinary_storage.storage import MediaCloudinaryStorage
 
 class Category(models.Model):
     name = models.CharField(max_length=100,  unique=True)
@@ -19,6 +21,7 @@ class Category(models.Model):
     description = models.TextField(blank=True)
     image = models.ImageField(
         upload_to='categories/', blank=True, null=True,
+        storage=MediaCloudinaryStorage() if settings.USE_CLOUDINARY else None,
         help_text="Representative image of the category"
     )
     
@@ -45,6 +48,7 @@ class Product(models.Model):
         upload_to='products/',
         blank=True,
         null=True,
+        storage=MediaCloudinaryStorage() if settings.USE_CLOUDINARY else None,
         help_text="Main product image"
     )
     brand = models.ForeignKey(BrandProfile, on_delete=models.CASCADE)

@@ -485,7 +485,7 @@ class ProductService:
         """
         try:
             # Check if product belongs to user's brand
-            if product.brand.user != user:
+            if product.brand.user_profile.user != user:
                 raise BusinessException(
                     ERROR_PRODUCT_BRAND_MISMATCH,
                     error_code='PERMISSION_DENIED'

@@ -16,7 +16,8 @@ from pathlib import Path
 import os
 from dotenv import load_dotenv
 load_dotenv()
-
+print("USE_CLOUDINARY =", os.getenv("USE_CLOUDINARY"))
+print("USE_CLOUDINARY PARSED =", os.getenv("USE_CLOUDINARY", "False") == "True")
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -33,21 +34,29 @@ USE_CLOUDINARY = os.getenv("USE_CLOUDINARY", "False") == "True"
 
 ALLOWED_HOSTS = ['*']
 
-# -------------------------
-# MEDIA CONFIG (local por defecto)
-# -------------------------
-MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media/')
+
 
 # Cloudinary configuration
 if USE_CLOUDINARY:
+    print("→ Using Cloudinary Storage")
     DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
-
+    CLOUDINARY_URL = f"cloudinary://{os.getenv('API_KEY')}:{os.getenv('API_SECRET')}@{os.getenv('CLOUD_NAME')}"
     CLOUDINARY_STORAGE = {
         'CLOUD_NAME': os.getenv('CLOUD_NAME'),
         'API_KEY': os.getenv('API_KEY'),
         'API_SECRET': os.getenv('API_SECRET'),
     }
+
+    MEDIA_URL = '/media/'   # <-- NECESARIO PARA CLOUINARY
+else:
+    # -------------------------
+    # MEDIA CONFIG (local por defecto)
+    # -------------------------
+    print("→ Using Local Storage")
+    MEDIA_URL = '/media/'
+    # MEDIA_ROOT = os.path.join(BASE_DIR, 'media/')
+
+
 
 # Application definition
 

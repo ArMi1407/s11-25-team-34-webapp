@@ -12,7 +12,8 @@ from rest_framework import serializers
 from django.utils.text import slugify
 import os
 import logging
-from .models import Category, Category, Product, BrandProfile
+from .models import Category, Category, Product
+from accounts.models import BrandProfile, UserProfile
 from .services import CategoryService, BusinessException, ProductService
 from .constants import *
 
@@ -202,7 +203,7 @@ class ProductListSerializer(serializers.ModelSerializer):
     Simplified serializer for product listing
     """
     category_name = serializers.CharField(source='category.name', read_only=True)
-    brand_name = serializers.CharField(source='brand.name', read_only=True)
+    brand_name = serializers.CharField(source='brand.brand_name', read_only=True)
     image_url = serializers.SerializerMethodField()
     
     class Meta:
@@ -230,7 +231,7 @@ class ProductSerializer(serializers.ModelSerializer):
     """
     image_url = serializers.SerializerMethodField()
     category_name = serializers.CharField(source='category.name', read_only=True)
-    brand_name = serializers.CharField(source='brand.name', read_only=True)
+    brand_name = serializers.CharField(source='brand.brand_name', read_only=True)
     
     class Meta:
         model = Product
@@ -371,8 +372,8 @@ class ProductSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(AUTHENTICATION_REQUIRED)
             
             try:
-                brand = request.user.brandprofile
-            except BrandProfile.DoesNotExist:
+                brand = request.user.userprofile.brandprofile
+            except (UserProfile.DoesNotExist, BrandProfile.DoesNotExist):
                 raise serializers.ValidationError("User does not have a brand profile")
             
             # Create product using service
@@ -418,20 +419,26 @@ class ProductCreateSerializer(ProductSerializer):
     Extends ProductSerializer but removes read-only fields for creation
     """
     # Mantenemos los campos del ProductSerializer pero ajustamos para creación
+
+
+class ProductCreateSerializer(ProductSerializer):
+    """
+    Serializer specifically for creating products
+    Extends ProductSerializer but removes read-only fields for creation
+    """
     
-    class Meta(ProductSerializer.Meta):
-        # Heredamos todos los campos de ProductSerializer
-        fields = ProductSerializer.Meta.fields.copy()
-        # Removemos los campos read-only que no deberían estar en creación
+    class Meta:
+        model = Product
         fields = [
-            'name', 'slug', 'description', 'image',
-            'category', 'brand', 'climatiq_category', 
-            'price', 'stock', 'is_active', 'ingredient_main', 'base_type', 
-            'packaging_material', 'origin_country', 'weight', 'recyclable_packaging', 
+            'name', 'description', 'image',
+            'category', 'price', 'stock', 'is_active', 
+            'ingredient_main', 'base_type', 'packaging_material', 
+            'origin_country', 'weight', 'recyclable_packaging', 
             'transportation_type'
         ]
-        # Para creación, mantenemos todos los campos como editables
-        read_only_fields = []
+        extra_kwargs = {
+            'image': {'required': False}
+        }
 
 class ProductImageFieldSerializer(serializers.ModelSerializer):
     """
