@@ -4,29 +4,20 @@ Description: Category Services
 File: services.py
 Author: Anthony Bañon
 Created: 2025-12-03
-Last Updated: 2025-12-03
-"""
-
-"""
-Description: Category Services
-
-File: services.py
-Author: Anthony Bañon
-Created: 2025-12-03
-Last Updated: 2025-12-03
+Last Updated: 2025-12-05
+Changes: Switching to a single image for product
 """
 
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils.text import slugify
 from cloudinary.exceptions import Error as CloudinaryError
-from .models import Category, Product, ProductImage
+from .models import Category, Product
 from accounts.models import BrandProfile
 from .constants import *
-import math
-import os
+
 
 logger = logging.getLogger(__name__)
 
@@ -520,36 +511,3 @@ class ProductService:
                 details={'error': str(e)}
             )
     
-    @staticmethod
-    def toggle_product_active(product: Product, user, activate: bool) -> Product:
-        """
-        Activate or deactivate a product
-        Returns: updated_product
-        Raises: BusinessException on error
-        """
-        try:
-            # Check if product belongs to user's brand
-            if product.brand.user != user:
-                raise BusinessException(
-                    ERROR_PRODUCT_BRAND_MISMATCH,
-                    error_code='PERMISSION_DENIED'
-                )
-            
-            product.is_active = activate
-            product.save(update_fields=['is_active'])
-            
-            action = "activated" if activate else "deactivated"
-            logger.info(f"Product {action}: {product.name} (ID: {product.id})")
-            
-            return product
-            
-        except BusinessException:
-            raise
-        except Exception as e:
-            logger.error(f"Error toggling product active status: {str(e)}")
-            error_msg = ERROR_PRODUCT_ACTIVATED if activate else ERROR_PRODUCT_DEACTIVATED
-            raise BusinessException(
-                error_msg,
-                error_code='TOGGLE_ERROR',
-                details={'error': str(e)}
-            )

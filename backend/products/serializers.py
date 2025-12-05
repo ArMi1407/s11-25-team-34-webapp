@@ -4,22 +4,15 @@ Description: Category Serializers
 File: serializers.py
 Author: Anthony Bañon
 Created: 2025-12-03
-Last Updated: 2025-12-03
-"""
-"""
-Description: Category Serializers
-
-File: serializers.py
-Author: Anthony Bañon
-Created: 2025-12-03
-Last Updated: 2025-12-03
+Last Updated: 2025-12-05
+Changes: Switching to a single image for product
 """
 
 from rest_framework import serializers
 from django.utils.text import slugify
 import os
 import logging
-from .models import Category, ProductImage, Category, Product, BrandProfile
+from .models import Category, Category, Product, BrandProfile
 from .services import CategoryService, BusinessException, ProductService
 from .constants import *
 
@@ -419,26 +412,73 @@ class ProductSerializer(serializers.ModelSerializer):
 
 
 class ProductCreateSerializer(ProductSerializer):
+
     """
-    Serializer for product creation with additional validations
+    Serializer specifically for creating products
+    Extends ProductSerializer but removes read-only fields for creation
     """
+    # Mantenemos los campos del ProductSerializer pero ajustamos para creación
+    
     class Meta(ProductSerializer.Meta):
-        extra_kwargs = {
-            **ProductSerializer.Meta.extra_kwargs,
-            'description': {'required': True},
-            'price': {'required': True},
-            'category': {'required': True},
-            'ingredient_main': {'required': True},
-            'base_type': {'required': True},
-            'packaging_material': {'required': True},
-            'origin_country': {'required': True},
-            'weight': {'required': True},
-            'transportation_type': {'required': True},
-        }
+        # Heredamos todos los campos de ProductSerializer
+        fields = ProductSerializer.Meta.fields.copy()
+        # Removemos los campos read-only que no deberían estar en creación
+        fields = [
+            'name', 'slug', 'description', 'image',
+            'category', 'brand', 'climatiq_category', 
+            'price', 'stock', 'is_active', 'ingredient_main', 'base_type', 
+            'packaging_material', 'origin_country', 'weight', 'recyclable_packaging', 
+            'transportation_type'
+        ]
+        # Para creación, mantenemos todos los campos como editables
+        read_only_fields = []
+
+class ProductImageFieldSerializer(serializers.ModelSerializer):
     """
-    Serializer for removing a product image
+    Serializer for product image field with validation
     """
-    image_id = serializers.IntegerField(
-        required=True,
-        help_text="ID of the image to remove"
-    )
+    image_url = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Product
+        fields = ['id', 'name', 'image', 'image_url']
+        read_only_fields = ['id', 'name', 'image_url']
+    
+    def get_image_url(self, obj):
+        """Return full URL for the image"""
+        if obj.image and hasattr(obj.image, 'url'):
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.image.url)
+            return obj.image.url
+        return None
+    
+    def validate_image(self, value):
+        """Validate product image"""
+        # Check file size
+        if value.size > PRODUCT_IMAGE_MAX_SIZE_BYTES:
+            raise serializers.ValidationError(
+                VALIDATION_PRODUCT_IMAGE_TOO_LARGE
+            )
+        
+        # Check file type
+        ext = os.path.splitext(value.name)[1].lower()
+        if ext not in PRODUCT_IMAGE_ALLOWED_EXTENSIONS:
+            raise serializers.ValidationError(
+                VALIDATION_PRODUCT_IMAGE_INVALID_FORMAT
+            )
+        
+        return value
+    
+    # AÑADE ESTE MÉTODO:
+    def update(self, instance, validated_data):
+        """Update only the product image"""
+        if 'image' in validated_data:
+            # Delete old image if exists
+            if instance.image:
+                instance.image.delete(save=False)
+            
+            instance.image = validated_data['image']
+            instance.save()
+        
+        return instance
