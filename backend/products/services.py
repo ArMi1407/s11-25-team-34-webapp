@@ -4,28 +4,20 @@ Description: Category Services
 File: services.py
 Author: Anthony Bañon
 Created: 2025-12-03
-Last Updated: 2025-12-03
-"""
-
-"""
-Description: Category Services
-
-File: services.py
-Author: Anthony Bañon
-Created: 2025-12-03
-Last Updated: 2025-12-03
+Last Updated: 2025-12-05
+Changes: Switching to a single image for product
 """
 
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils.text import slugify
 from cloudinary.exceptions import Error as CloudinaryError
-from .models import Category, Product, ProductImage
+from .models import Category, Product
 from accounts.models import BrandProfile
 from .constants import *
-import math
+
 
 logger = logging.getLogger(__name__)
 
@@ -284,8 +276,6 @@ class ProductService:
             }
             
             # Transportation carbon factors (kg CO2 per gram per km)
-            # Simplified: distance based on origin (EU, NA, ASIA, etc.)
-            # This would be replaced with actual Climatiq API calls
             transportation_factors = {
                 'air': 0.0005,
                 'sea': 0.00005,
@@ -305,7 +295,6 @@ class ProductService:
                 packaging_footprint *= 0.7  # 30% reduction for recyclable
             
             # Calculate transportation footprint (simplified)
-            # Assume average distance based on origin
             distance = 1000  # km - would be calculated based on origin_country
             transport_factor = transportation_factors.get(transportation_type, 0.0001)
             transport_footprint = transport_factor * weight * distance
@@ -333,22 +322,15 @@ class ProductService:
             return '🌳 high Impact'
     
     @staticmethod
-    def create_product(data: Dict[str, Any], brand: BrandProfile, images_data: List[Dict] = None) -> Product:
+    def create_product(data: Dict[str, Any], brand: BrandProfile, image=None) -> Product:
         """
-        Create a new product with validation and related images
+        Create a new product with single image
         Returns: product_instance
         Raises: BusinessException on error
         """
         try:
             with transaction.atomic():
-                # Validate required fields
-                if not data.get('name'):
-                    raise BusinessException(
-                        VALIDATION_PRODUCT_NAME_REQUIRED,
-                        error_code='NAME_REQUIRED'
-                    )
-                
-                # Auto-generate slug if not provided
+                # Auto-generate slug if not provided (trust serializer validation)
                 if 'slug' not in data or not data['slug']:
                     data['slug'] = slugify(data.get('name', ''))
                 
@@ -380,12 +362,13 @@ class ProductService:
                 
                 # Create product
                 product = Product.objects.create(brand=brand, **data)
+                
+                # Handle image if provided
+                if image:
+                    product.image = image
+                    product.save()
+                
                 logger.info(f"Product created successfully: {product.name} (ID: {product.id})")
-                
-                # Handle images if provided
-                if images_data:
-                    ProductService._handle_product_images(product, images_data)
-                
                 return product
                 
         except ValidationError as ve:
@@ -406,46 +389,9 @@ class ProductService:
             )
     
     @staticmethod
-    def _handle_product_images(product: Product, images_data: List[Dict]) -> None:
+    def update_product(product: Product, data: Dict[str, Any], image=None) -> Product:
         """
-        Create product images with validation
-        """
-        try:
-            primary_images = 0
-            
-            for image_data in images_data:
-                is_primary = image_data.get('is_primary', False)
-                if is_primary:
-                    primary_images += 1
-                
-                ProductImage.objects.create(
-                    product=product,
-                    image=image_data['image'],
-                    is_primary=is_primary
-                )
-            
-            # Ensure at least one primary image
-            if primary_images == 0 and len(images_data) > 0:
-                # Make first image primary
-                first_image = ProductImage.objects.filter(product=product).first()
-                if first_image:
-                    first_image.is_primary = True
-                    first_image.save()
-            
-            logger.info(f"Created {len(images_data)} images for product: {product.name}")
-            
-        except Exception as e:
-            logger.error(f"Error creating product images: {str(e)}")
-            raise BusinessException(
-                ERROR_PRODUCT_IMAGE_UPLOAD_FAILED,
-                error_code='IMAGE_CREATE_ERROR',
-                details={'error': str(e)}
-            )
-    
-    @staticmethod
-    def update_product(product: Product, data: Dict[str, Any], images_data: Optional[List[Dict]] = None) -> Product:
-        """
-        Update an existing product
+        Update an existing product with optional image
         Returns: updated_product
         Raises: BusinessException on error
         """
@@ -497,12 +443,19 @@ class ProductService:
                 for field, value in data.items():
                     setattr(product, field, value)
                 
+                # Handle image update
+                if image is not None:
+                    # Delete old image file if exists
+                    if product.image:
+                        try:
+                            product.image.delete(save=False)
+                        except Exception as e:
+                            logger.warning(f"Could not delete old image: {str(e)}")
+                    
+                    product.image = image
+                
                 product.full_clean()
                 product.save()
-                
-                # Handle images if provided
-                if images_data is not None:
-                    ProductService._update_product_images(product, images_data)
                 
                 logger.info(f"Product updated successfully: {product.name} (ID: {product.id})")
                 return product
@@ -525,28 +478,6 @@ class ProductService:
             )
     
     @staticmethod
-    def _update_product_images(product: Product, images_data: List[Dict]) -> None:
-        """
-        Update product images - replaces existing images
-        """
-        try:
-            # Delete existing images
-            product.images.all().delete()
-            
-            # Create new images
-            ProductService._handle_product_images(product, images_data)
-            
-            logger.info(f"Updated images for product: {product.name}")
-            
-        except Exception as e:
-            logger.error(f"Error updating product images: {str(e)}")
-            raise BusinessException(
-                ERROR_PRODUCT_IMAGE_UPLOAD_FAILED,
-                error_code='IMAGE_UPDATE_ERROR',
-                details={'error': str(e)}
-            )
-    
-    @staticmethod
     def delete_product(product: Product, user) -> None:
         """
         Delete a product with permission check
@@ -560,10 +491,10 @@ class ProductService:
                     error_code='PERMISSION_DENIED'
                 )
             
-            # Delete associated images
-            for image in product.images.all():
+            # Delete associated image file
+            if product.image:
                 try:
-                    image.image.delete(save=False)
+                    product.image.delete(save=False)
                 except Exception as e:
                     logger.warning(f"Could not delete product image: {str(e)}")
             
@@ -580,36 +511,3 @@ class ProductService:
                 details={'error': str(e)}
             )
     
-    @staticmethod
-    def toggle_product_active(product: Product, user, activate: bool) -> Product:
-        """
-        Activate or deactivate a product
-        Returns: updated_product
-        Raises: BusinessException on error
-        """
-        try:
-            # Check if product belongs to user's brand
-            if product.brand.user != user:
-                raise BusinessException(
-                    ERROR_PRODUCT_BRAND_MISMATCH,
-                    error_code='PERMISSION_DENIED'
-                )
-            
-            product.is_active = activate
-            product.save(update_fields=['is_active'])
-            
-            action = "activated" if activate else "deactivated"
-            logger.info(f"Product {action}: {product.name} (ID: {product.id})")
-            
-            return product
-            
-        except BusinessException:
-            raise
-        except Exception as e:
-            logger.error(f"Error toggling product active status: {str(e)}")
-            error_msg = ERROR_PRODUCT_ACTIVATED if activate else ERROR_PRODUCT_DEACTIVATED
-            raise BusinessException(
-                error_msg,
-                error_code='TOGGLE_ERROR',
-                details={'error': str(e)}
-            )

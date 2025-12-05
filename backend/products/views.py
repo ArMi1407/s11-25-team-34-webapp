@@ -13,7 +13,8 @@ Description: Category Views
 File: views.py
 Author: Anthony Bañon
 Created: 2025-12-03
-Last Updated: 2025-12-03
+Last Updated: 2025-12-05
+Changes: Switching to a single image for product
 """
 
 from rest_framework import viewsets, status, filters, generics
@@ -26,10 +27,11 @@ from django.shortcuts import get_object_or_404
 from django.db.models import Q
 
 from .models import Category, Product
-from .serializers import CategorySerializer, CategoryListSerializer, CategoryImageSerializer, ProductSerializer, ProductListSerializer, ProductCreateSerializer
+from .serializers import CategorySerializer, CategoryListSerializer, CategoryImageSerializer, ProductSerializer, ProductListSerializer, ProductCreateSerializer, ProductImageFieldSerializer
 from .services import CategoryService, ProductService, BusinessException
 from .constants import *
 from .filters import ProductFilter
+
 
 import logging
 logger = logging.getLogger(__name__)
@@ -174,6 +176,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
         )
 
 ######## Product Views #####
+
 class ProductViewSet(viewsets.ModelViewSet):
     """
     ViewSet for managing Product resources
@@ -212,9 +215,9 @@ class ProductViewSet(viewsets.ModelViewSet):
                 if self.request.query_params.get('my_products') == 'true':
                     queryset = queryset.filter(brand=self.request.user.brandprofile)
         
-        # Optimize queries
+        # Optimize queries - remove prefetch_related('images') as we now have single image
         if self.action == 'list':
-            queryset = queryset.select_related('category', 'brand').prefetch_related('images')
+            queryset = queryset.select_related('category', 'brand')
         
         return queryset
     
@@ -224,14 +227,15 @@ class ProductViewSet(viewsets.ModelViewSet):
             return ProductCreateSerializer
         elif self.action == 'list':
             return ProductListSerializer
+        elif self.action == 'upload_image':
+            return ProductImageFieldSerializer  # <-- AÑADE ESTA LÍNEA
         return super().get_serializer_class()
     
     def get_permissions(self):
         """
         Override permissions for specific actions
         """
-        if self.action in ['create', 'update', 'partial_update', 'destroy', 
-                          'activate', 'deactivate', 'my_products']:
+        if self.action in ['create', 'update', 'partial_update', 'destroy', 'my_products', 'remove_image', 'upload_image']:
             return [IsAuthenticated()]
         return super().get_permissions()
     
@@ -254,13 +258,24 @@ class ProductViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         
         try:
-            self.perform_create(serializer)
+            # Create product through serializer which calls ProductService
+            product = serializer.save()
+            
             return Response(
                 {
                     'detail': SUCCESS_PRODUCT_CREATED,
-                    'product': serializer.data
+                    'product': ProductSerializer(product, context={'request': request}).data
                 },
                 status=status.HTTP_201_CREATED
+            )
+        except ValidationError as ve:
+            logger.error(f"Validation error creating product: {ve}")
+            return Response(
+                {
+                    'detail': ERROR_PRODUCT_CREATE_FAILED,
+                    'errors': ve.detail
+                },
+                status=status.HTTP_400_BAD_REQUEST
             )
         except Exception as e:
             logger.error(f"Error creating product: {str(e)}")
@@ -287,13 +302,24 @@ class ProductViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         
         try:
-            self.perform_update(serializer)
+            # Update product through serializer which calls ProductService
+            updated_product = serializer.save()
+            
             return Response(
                 {
                     'detail': SUCCESS_PRODUCT_UPDATED,
-                    'product': serializer.data
+                    'product': ProductSerializer(updated_product, context={'request': request}).data
                 },
                 status=status.HTTP_200_OK
+            )
+        except ValidationError as ve:
+            logger.error(f"Validation error updating product: {ve}")
+            return Response(
+                {
+                    'detail': ERROR_PRODUCT_UPDATE_FAILED,
+                    'errors': ve.detail
+                },
+                status=status.HTTP_400_BAD_REQUEST
             )
         except Exception as e:
             logger.error(f"Error updating product: {str(e)}")
@@ -310,6 +336,7 @@ class ProductViewSet(viewsets.ModelViewSet):
         product = self.get_object()
         
         try:
+            # Use ProductService directly for deletion
             ProductService.delete_product(product, request.user)
             return Response(
                 {'detail': SUCCESS_PRODUCT_DELETED},
@@ -322,6 +349,12 @@ class ProductViewSet(viewsets.ModelViewSet):
                     'error_code': e.error_code,
                     'details': e.details
                 },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.error(f"Error deleting product: {str(e)}")
+            return Response(
+                {'detail': ERROR_PRODUCT_DELETE_FAILED},
                 status=status.HTTP_400_BAD_REQUEST
             )
     
@@ -350,54 +383,6 @@ class ProductViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(products, many=True)
         return Response(serializer.data)
     
-    @action(detail=True, methods=['post'], url_path='activate')
-    def activate(self, request, slug=None):
-        """
-        Activate a product
-        POST /api/products/{slug}/activate/
-        """
-        product = self.get_object()
-        
-        try:
-            ProductService.toggle_product_active(product, request.user, activate=True)
-            return Response(
-                {'detail': SUCCESS_PRODUCT_ACTIVATED},
-                status=status.HTTP_200_OK
-            )
-        except BusinessException as e:
-            return Response(
-                {
-                    'detail': e.message,
-                    'error_code': e.error_code,
-                    'details': e.details
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
-    
-    @action(detail=True, methods=['post'], url_path='deactivate')
-    def deactivate(self, request, slug=None):
-        """
-        Deactivate a product
-        POST /api/products/{slug}/deactivate/
-        """
-        product = self.get_object()
-        
-        try:
-            ProductService.toggle_product_active(product, request.user, activate=False)
-            return Response(
-                {'detail': SUCCESS_PRODUCT_DEACTIVATED},
-                status=status.HTTP_200_OK
-            )
-        except BusinessException as e:
-            return Response(
-                {
-                    'detail': e.message,
-                    'error_code': e.error_code,
-                    'details': e.details
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
-    
     @action(detail=True, methods=['get'], url_path='similar')
     def similar_products(self, request, slug=None):
         """
@@ -406,7 +391,7 @@ class ProductViewSet(viewsets.ModelViewSet):
         """
         product = self.get_object()
         
-        # Find similar products (same category, similar price range)
+        # Find similar products (same category, similar characteristics)
         similar_products = Product.objects.filter(
             category=product.category,
             is_active=True
@@ -415,7 +400,7 @@ class ProductViewSet(viewsets.ModelViewSet):
         ).filter(
             Q(base_type=product.base_type) |
             Q(packaging_material=product.packaging_material)
-        ).select_related('category', 'brand').prefetch_related('images')[:8]
+        ).select_related('category', 'brand')[:8]  # Removed prefetch_related('images')
         
         serializer = ProductListSerializer(
             similar_products, 
@@ -424,51 +409,94 @@ class ProductViewSet(viewsets.ModelViewSet):
         )
         
         return Response(serializer.data)
-
-class ProductSearchView(generics.ListAPIView):
-    """
-    Dedicated search view for products with advanced filtering
-    """
-    queryset = Product.objects.filter(is_active=True)
-    serializer_class = ProductListSerializer
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_class = ProductFilter
-    search_fields = ['name', 'description', 'ingredient_main', 'brand__name']
-    ordering_fields = ['price', 'carbon_footprint', 'created_at']
     
-    def get_queryset(self):
-        """Optimize search queryset"""
-        queryset = super().get_queryset()
-        queryset = queryset.select_related('category', 'brand').prefetch_related('images')
-        return queryset
-    
-    def list(self, request, *args, **kwargs):
-        """Override to add search metadata"""
-        queryset = self.filter_queryset(self.get_queryset())
+    @action(detail=True, methods=['delete'], url_path='remove-image')
+    def remove_image(self, request, slug=None):
+        """
+        Custom action to remove product image
+        DELETE /api/products/{slug}/remove-image/
+        """
+        product = self.get_object()
         
-        # Get search query
-        search_query = request.query_params.get('search', '')
-        
-        # Validate search query length
-        if search_query and len(search_query) < PRODUCT_SEARCH_MIN_QUERY_LENGTH:
+        # Check if product belongs to user's brand
+        if not hasattr(request.user, 'brandprofile') or product.brand != request.user.brandprofile:
             return Response(
-                {
-                    'detail': f"Search query must be at least {PRODUCT_SEARCH_MIN_QUERY_LENGTH} characters"
-                },
-                status=status.HTTP_400_BAD_REQUEST
+                {'detail': ERROR_PRODUCT_BRAND_MISMATCH},
+                status=status.HTTP_403_FORBIDDEN
             )
         
-        page = self.paginate_queryset(queryset)
-        if page is not None:
-            serializer = self.get_serializer(page, many=True)
-            response = self.get_paginated_response(serializer.data)
-            response.data['search_query'] = search_query
-            response.data['total_results'] = queryset.count()
-            return response
+        try:
+            # Verificar si tiene imagen
+            if not product.image:
+                return Response(
+                    {'detail': "Product does not have an image"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Eliminar la imagen
+            product.image.delete(save=False)
+            product.image = None
+            product.save()
+            
+            return Response(
+                {'detail': SUCCESS_PRODUCT_IMAGE_REMOVED},
+                status=status.HTTP_200_OK
+            )
+        except Exception as e:
+            logger.error(f"Error removing product image: {str(e)}")
+            return Response(
+                {'detail': ERROR_PRODUCT_IMAGE_UPLOAD_FAILED},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+    
+    @action(detail=True, methods=['put'], url_path='upload-image', 
+            parser_classes=[MultiPartParser, FormParser])
+    def upload_image(self, request, slug=None):
+        """
+        Custom action to upload/update product image
+        PUT/PATCH /api/products/{slug}/upload-image/
         
-        serializer = self.get_serializer(queryset, many=True)
-        return Response({
-            'results': serializer.data,
-            'search_query': search_query,
-            'total_results': queryset.count()
-        })
+        Expected form data: {'image': <file>}
+        """
+        product = self.get_object()
+        
+        # Check if product belongs to user's brand
+        if not hasattr(request.user, 'brandprofile') or product.brand != request.user.brandprofile:
+            return Response(
+                {'detail': ERROR_PRODUCT_BRAND_MISMATCH},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Usar el ProductImageFieldSerializer para validar la imagen
+        serializer = ProductImageFieldSerializer(
+            product, 
+            data=request.data,
+            context={'request': request},
+            partial=True
+        )
+        
+        if serializer.is_valid():
+            # Actualizar solo la imagen
+            if 'image' in serializer.validated_data:
+                # Borrar imagen anterior si existe
+                if product.image:
+                    product.image.delete(save=False)
+                
+                product.image = serializer.validated_data['image']
+                product.save()
+            
+            return Response(
+                {
+                    'detail': SUCCESS_PRODUCT_IMAGE_UPLOADED,
+                    'image_url': serializer.data.get('image_url')
+                },
+                status=status.HTTP_200_OK
+            )
+        
+        return Response(
+            {
+                'detail': ERROR_PRODUCT_IMAGE_UPLOAD_FAILED,
+                'errors': serializer.errors
+            },
+            status=status.HTTP_400_BAD_REQUEST
+        )
