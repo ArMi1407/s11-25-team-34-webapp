@@ -1,15 +1,10 @@
 # orders/models.py
 from django.db import models
 from products.models import Product
+from .constants import *
 
 class Order(models.Model):
-    ORDER_STATUS = [
-        ('pending', 'Pending'),
-        ('paid', 'Paid'),
-        ('shipped', 'Shipped'),
-        ('delivered', 'Delivered'),
-        ('cancelled', 'Cancelled')
-    ]
+    ORDER_STATUS = ORDER_STATUS_CHOICES
     
     user = models.ForeignKey('auth.User', on_delete=models.CASCADE)
     order_number = models.CharField(max_length=20, unique=True)
@@ -43,18 +38,9 @@ class OrderItem(models.Model):
         return f"{self.quantity} x {self.product.name}"
 
 class Payment(models.Model):
-    PAYMENT_METHODS = [
-        ('stripe', 'Stripe'),
-        ('mercadopago', 'MercadoPago')
-    ]
+    PAYMENT_METHODS = PAYMENT_METHOD_CHOICES
     
-    PAYMENT_STATUS = [
-        ('pending', 'Pending'),
-        ('paid', 'Paid'),
-        ('shipped', 'Shipped'),
-        ('cancelled', 'Cancelled'),
-        ('delivered','Delivered')
-    ]
+    PAYMENT_STATUS = PAYMENT_STATUS_CHOICES
     
     order = models.OneToOneField(Order, on_delete=models.CASCADE)
     payment_method = models.CharField(max_length=20, choices=PAYMENT_METHODS)
