@@ -1,0 +1,31 @@
+# Entornos virtuales
+venv/
+env/
+*/venv/
+*/env/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# API keys y secretos
+.env
+*.env
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Data (si son archivos grandes o temporales)
+*.csv
+!backend/ecoshop-data/data/products.csv
+!backend/ecoshop-data/data/products_with_impact.csv
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
