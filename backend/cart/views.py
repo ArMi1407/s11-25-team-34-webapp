@@ -73,69 +73,6 @@ class CartViewSet(viewsets.ViewSet):
         except BusinessException as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
     
-    # @swagger_auto_schema(request_body=UpdateCartItemSerializer)
-    # @action(detail=False, methods=['put'])
-    # def update_item(self, request):
-    #     """✅ Update cart item quantity (complex logic in service)"""
-    #     serializer = UpdateCartItemSerializer(data=request.data)
-    #     serializer.is_valid(raise_exception=True)
-        
-    #     item_id = request.query_params.get('item_id')
-    #     if not item_id:
-    #         return Response({'error': 'item_id parameter is required'}, 
-    #                       status=status.HTTP_400_BAD_REQUEST)
-        
-    #     try:
-    #         cart_service = self._get_cart_service()
-    #         cart_item = cart_service.update_cart_item(
-    #             request,
-    #             item_id,
-    #             serializer.validated_data['quantity']
-    #         )
-            
-    #         cart = cart_item.cart
-    #         return Response({
-    #             'message': 'Cart item updated successfully',
-    #             'data': {
-    #                 'cart_item': CartItemSerializer(cart_item).data,
-    #                 'cart_summary': {
-    #                     'total_items': cart.total_items,
-    #                     'total_price': cart.total_price,
-    #                     'total_carbon_footprint': cart.total_carbon_footprint
-    #                 }
-    #             }
-    #         })
-            
-    #     except BusinessException as e:
-    #         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-    
-    # @action(detail=False, methods=['delete'])
-    # def remove_item(self, request):
-    #     """✅ Remove item from cart (simple logic in service)"""
-    #     item_id = request.query_params.get('item_id')
-    #     if not item_id:
-    #         return Response({'error': 'item_id parameter is required'}, 
-    #                       status=status.HTTP_400_BAD_REQUEST)
-        
-    #     try:
-    #         cart_service = self._get_cart_service()
-    #         cart_service.remove_from_cart(request, item_id)
-            
-    #         cart = cart_service.get_cart(request)
-    #         return Response({
-    #             'message': 'Item removed from cart',
-    #             'data': {
-    #                 'cart_summary': {
-    #                     'total_items': cart.total_items,
-    #                     'total_price': cart.total_price,
-    #                     'total_carbon_footprint': cart.total_carbon_footprint
-    #                 }
-    #             }
-    #         })
-            
-    #     except BusinessException as e:
-    #         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-    
     @action(detail=False, methods=['delete'])
     def clear(self, request):
         """✅ Clear all items from cart (simple logic in service)"""
@@ -160,17 +97,25 @@ class CartItemViewSet(viewsets.GenericViewSet,
                       mixins.RetrieveModelMixin):
     """RESTful handler for cart items at /cart/items/<id>/"""
 
-    serializer_class = CartItemSerializer
+    
     permission_classes = [AllowAny]
 
     def get_queryset(self):
         service = CartService()
         cart = service.get_cart(self.request)
         return CartItem.objects.filter(cart=cart)
-
+    
+    def get_serializer_class(self):
+        # Swagger & DRF correctly handle request bodies depending on action
+        if self.action in ["update", "partial_update"]:
+            return UpdateCartItemSerializer
+        return CartItemSerializer
+    
     @transaction.atomic
-    def update(self, request, pk=None):
-        serializer = UpdateCartItemSerializer(data=request.data)
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop("partial", False)
+        pk = kwargs.get("pk")
+        serializer = self.get_serializer(data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
 
         try:
@@ -256,15 +201,18 @@ class MergeCartView(APIView):
     
     @swagger_auto_schema(operation_description="Merge guest cart with user cart after login")
     def post(self, request):
-        session_key = request.query_params.get('session_key')
+        old_key = request.session.get("old_session_key")
         
-        if not session_key:
-            return Response({'error': 'session_key parameter is required'}, 
+        if not old_key:
+            return Response({'error': 'No anonymous cart to merge'}, 
                           status=status.HTTP_400_BAD_REQUEST)
         
         try:
             cart_service = CartService()
-            cart, warnings = cart_service.merge_carts(request.user, session_key)
+            cart, warnings = cart_service.merge_carts(request.user, old_key)
+            # Clean up old session key
+            request.session.pop("old_session_key", None)
+
             response_data = {
                 'message': 'Cart merged successfully',
                 'data': CartSerializer(cart).data

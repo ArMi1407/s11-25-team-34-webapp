@@ -68,11 +68,11 @@ class AddToCartSerializer(serializers.Serializer):
 
 class UpdateCartItemSerializer(serializers.Serializer):
     """Validation ONLY for updating cart item quantity"""
-    quantity = serializers.IntegerField(required=True, min_value=0, max_value=MAX_CART_QUANTITY)
+    quantity = serializers.IntegerField(required=True, min_value=-MAX_CART_QUANTITY, max_value=MAX_CART_QUANTITY)
     
     def validate_quantity(self, value):
         if value == 0:
-            raise serializers.ValidationError("Use remove endpoint to delete items from cart")
+            raise serializers.ValidationError("Quantity delta cannot be 0")
         return value
 
 

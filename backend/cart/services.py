@@ -90,7 +90,7 @@ class CartService:
         return cart_item
     
     
-    def update_cart_item(self, request, item_id, quantity):
+    def update_cart_item(self, request, item_id, quantity_delta):
         """
         Complex operation: Update cart item quantity with business rules
         """
@@ -100,11 +100,23 @@ class CartService:
         except CartItem.DoesNotExist:
             raise BusinessException("Cart item not found")
         
-        # Check product stock (if available)
-        if hasattr(cart_item.product, 'stock') and cart_item.product.stock < quantity:
+        # calculate new quantity
+        old_quantity = cart_item.quantity
+        new_quantity = old_quantity + quantity_delta 
+
+        # Validate new quantity
+        if new_quantity <= 0:
+            raise BusinessException("Quantity cannot be zero or negative. Use delete endpoint instead.")
+
+        #   Validate max quantity
+        if new_quantity > MAX_CART_QUANTITY:
+            raise BusinessException(f"Maximum allowed quantity is {MAX_CART_QUANTITY}")
+
+        #  Validate stock   
+        if hasattr(cart_item.product, "stock") and cart_item.product.stock < new_quantity:
             raise BusinessException(f"Not enough stock. Available: {cart_item.product.stock}")
-        
-        cart_item.quantity = quantity
+            
+        cart_item.quantity = new_quantity
         cart_item.save()
         
         return cart_item
@@ -146,7 +158,7 @@ class CartService:
         warnings = []
 
         try:
-            # Get guest cart
+            # Get guest cart (anonymous)
             guest_cart = Cart.objects.get(session_key=session_key, user=None)
             
             # Get or create user cart
@@ -165,8 +177,8 @@ class CartService:
                 # Check limits
                 if new_quantity > MAX_CART_QUANTITY:
                     warnings.append(
-                        f"El producto '{guest_item.product.name}' alcanzó la cantidad máxima "
-                        f"({MAX_CART_QUANTITY}). Se ajustó automáticamente."
+                        f"The product '{guest_item.product.name}' reached the maximum amount "
+                        f"({MAX_CART_QUANTITY}). It was adjusted automatically."
                     )
                     new_quantity = MAX_CART_QUANTITY
 
@@ -179,7 +191,7 @@ class CartService:
             return user_cart, warnings 
             
         except Cart.DoesNotExist:
-            # No guest cart to merge
+            # There was no guest cart → return empty
             cart, created = Cart.objects.get_or_create(user=user)
             return cart, []
     
