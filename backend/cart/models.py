@@ -1,6 +1,9 @@
 # cart/models.py
 from django.db import models
 from products.models import Product
+from django.db.models import Sum, F, FloatField, DecimalField
+from django.db.models.functions import Coalesce
+from decimal import Decimal
 
 class Cart(models.Model):
     user = models.ForeignKey('auth.User', on_delete=models.CASCADE, null=True, blank=True)
@@ -10,15 +13,25 @@ class Cart(models.Model):
     
     @property
     def total_items(self):
-        return sum(item.quantity for item in self.items.all())
+        return self.items.aggregate(total=Coalesce(Sum('quantity'), 0))['total']
     
     @property
     def total_price(self):
-        return sum(item.total_price for item in self.items.all())
+        return self.items.aggregate(
+            total=Coalesce(
+                Sum(F('quantity') * F('product__price'), output_field=DecimalField(max_digits=12, decimal_places=2)),
+                Decimal('0.00')
+            )
+        )['total']
     
     @property
     def total_carbon_footprint(self):
-        return sum(item.total_carbon for item in self.items.all())
+        return self.items.aggregate(
+            total=Coalesce(
+                Sum(F('quantity') * F('product__carbon_footprint'), output_field=FloatField()),
+                0.0
+            )
+        )['total']
     
     def __str__(self):
         if self.user:
@@ -31,6 +44,12 @@ class CartItem(models.Model):
     quantity = models.PositiveIntegerField(default=1)
     added_at = models.DateTimeField(auto_now_add=True) # Fecha en que se añadió el ítem al carrito
     
+    class Meta:
+        indexes = [
+            models.Index(fields=["cart"]),
+            models.Index(fields=["product"]),
+        ]
+
     @property
     def total_price(self):
         return self.product.price * self.quantity

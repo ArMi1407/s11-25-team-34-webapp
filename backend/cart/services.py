@@ -44,48 +44,53 @@ class CartService:
             )
         return cart
     
-    @transaction.atomic
+    
     def add_to_cart(self, request, product_id, quantity):
         """
         Complex operation: Add item to cart with business rules
         ASSUMES data already validated by serializer
         """
         cart = self._get_or_create_cart(request)
-        
-        # Check if cart has too many different items
-        if cart.items.count() >= MAX_CART_ITEMS:
-            raise BusinessException(f"Cannot have more than {MAX_CART_ITEMS} different items in cart")
-        
+
+        # 1. Obtener el producto antes de usarlo
         try:
             product = Product.objects.get(id=product_id)
         except Product.DoesNotExist:
             raise BusinessException("Product not found")
-        
-        # Check if product is already in cart
+
+        # 2. Obtener o crear cart_item correctamente
         cart_item, created = CartItem.objects.get_or_create(
             cart=cart,
-            product=product,
+            product=product,  # ahora sí existe
             defaults={'quantity': 0}
         )
-        
-        # Update quantity
+
+        # 3. Limite de items distintos
+        if created and cart.items.count() > MAX_CART_ITEMS:
+            raise BusinessException(
+                f"Cannot have more than {MAX_CART_ITEMS} different items in cart"
+            )
+
+        # 4. Actualizar cantidad
         new_quantity = cart_item.quantity + quantity
-        
-        # Check total quantity limit
+
         if new_quantity > MAX_CART_QUANTITY:
-            raise BusinessException(f"Cannot have more than {MAX_CART_QUANTITY} of the same product")
-        
-        # Check product stock (if available)
+            raise BusinessException(
+                f"Cannot have more than {MAX_CART_QUANTITY} of the same product"
+            )
+
+        # 5. Validar stock
         if hasattr(product, 'stock') and product.stock < new_quantity:
             raise BusinessException(f"Not enough stock. Available: {product.stock}")
-        
+
+        # 6. Guardar cambios
         cart_item.quantity = new_quantity
         cart_item.save()
-        
+
         return cart_item
     
-    @transaction.atomic
-    def update_cart_item(self, request, item_id, quantity):
+    
+    def update_cart_item(self, request, item_id, quantity_delta):
         """
         Complex operation: Update cart item quantity with business rules
         """
@@ -95,16 +100,28 @@ class CartService:
         except CartItem.DoesNotExist:
             raise BusinessException("Cart item not found")
         
-        # Check product stock (if available)
-        if hasattr(cart_item.product, 'stock') and cart_item.product.stock < quantity:
+        # calculate new quantity
+        old_quantity = cart_item.quantity
+        new_quantity = old_quantity + quantity_delta 
+
+        # Validate new quantity
+        if new_quantity <= 0:
+            raise BusinessException("Quantity cannot be zero or negative. Use delete endpoint instead.")
+
+        #   Validate max quantity
+        if new_quantity > MAX_CART_QUANTITY:
+            raise BusinessException(f"Maximum allowed quantity is {MAX_CART_QUANTITY}")
+
+        #  Validate stock   
+        if hasattr(cart_item.product, "stock") and cart_item.product.stock < new_quantity:
             raise BusinessException(f"Not enough stock. Available: {cart_item.product.stock}")
-        
-        cart_item.quantity = quantity
+            
+        cart_item.quantity = new_quantity
         cart_item.save()
         
         return cart_item
     
-    @transaction.atomic
+    
     def remove_from_cart(self, request, item_id):
         """
         Complex operation: Remove item from cart
@@ -118,7 +135,7 @@ class CartService:
         cart_item.delete()
         return True
     
-    @transaction.atomic
+    
     def clear_cart(self, request):
         """
         Complex operation: Clear all items from cart
@@ -138,8 +155,10 @@ class CartService:
         """
         Complex operation: Merge guest cart with user cart after login
         """
+        warnings = []
+
         try:
-            # Get guest cart
+            # Get guest cart (anonymous)
             guest_cart = Cart.objects.get(session_key=session_key, user=None)
             
             # Get or create user cart
@@ -157,20 +176,24 @@ class CartService:
                 
                 # Check limits
                 if new_quantity > MAX_CART_QUANTITY:
+                    warnings.append(
+                        f"The product '{guest_item.product.name}' reached the maximum amount "
+                        f"({MAX_CART_QUANTITY}). It was adjusted automatically."
+                    )
                     new_quantity = MAX_CART_QUANTITY
-                
+
                 user_item.quantity = new_quantity
                 user_item.save()
             
             # Delete guest cart
             guest_cart.delete()
             
-            return user_cart
+            return user_cart, warnings 
             
         except Cart.DoesNotExist:
-            # No guest cart to merge
+            # There was no guest cart → return empty
             cart, created = Cart.objects.get_or_create(user=user)
-            return cart
+            return cart, []
     
     @transaction.atomic
     def checkout(self, request, shipping_address):
