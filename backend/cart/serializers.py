@@ -21,22 +21,33 @@ from django.db import transaction
 
 class CartItemProductSerializer(serializers.ModelSerializer):
     """Formatting ONLY for product data in cart items"""
+    image_url = serializers.SerializerMethodField()
     class Meta:
         model = Product
-        fields = ['id', 'name', 'price', 'carbon_footprint', 'image_url', 'brand_name']
-        read_only_fields = fields
+        fields = ["id", "name", "price", "image_url"]
+        read_only_fields = ["id", "name", "price", "image_url"]
+
+    def get_image_url(self, obj):
+        if obj.image:
+            return obj.image.url
+        return None
 
 
 class CartItemSerializer(serializers.ModelSerializer):
-    """Formatting ONLY for cart item output"""
     product = CartItemProductSerializer(read_only=True)
-    total_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
-    total_carbon = serializers.FloatField(read_only=True)
-    
+    total_price = serializers.SerializerMethodField()
+    total_carbon = serializers.SerializerMethodField()
+
     class Meta:
         model = CartItem
         fields = ['id', 'product', 'quantity', 'added_at', 'total_price', 'total_carbon']
         read_only_fields = fields
+
+    def get_total_price(self, obj):
+        return obj.total_price  # tu @property funciona bien
+
+    def get_total_carbon(self, obj):
+        return obj.total_carbon # tu @property funciona bien
 
 
 class AddToCartSerializer(serializers.Serializer):

@@ -13,6 +13,7 @@ from . import views
 # Create a router for ViewSet endpoints
 router = DefaultRouter()
 router.register(r'cart', views.CartViewSet, basename='cart')
+router.register(r'cart/items', views.CartItemViewSet, basename='cart-items')
 
 # URL patterns
 urlpatterns = [
