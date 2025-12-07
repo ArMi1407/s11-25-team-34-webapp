@@ -18,11 +18,18 @@ import json
 ##### Order Item Serializers #####
 
 class OrderItemProductSerializer(serializers.ModelSerializer):
+    brand_name = serializers.CharField(source="brand.brand_name", read_only=True)
+    image_url = serializers.SerializerMethodField()
     """Formatting ONLY for product data in order items"""
     class Meta:
         model = Product
         fields = ['id', 'name', 'brand_name', 'image_url']
         read_only_fields = fields
+    
+    def get_image_url(self, obj):
+        if obj.image:
+            return obj.image.url
+        return None
 
 
 class OrderItemSerializer(serializers.ModelSerializer):
@@ -115,7 +122,7 @@ class PaymentSerializer(serializers.ModelSerializer):
         model = Payment
         fields = [
             'id', 'order', 'order_number', 'payment_method', 'transaction_id',
-            'amount', 'status', 'paid_at', 'created_at'
+            'amount', 'status', 'paid_at', 'created_at', 'updated_at'
         ]
         read_only_fields = fields
 
