@@ -9,6 +9,8 @@ Created: 2025-12-01
 
 from django.contrib import admin
 from .models import Order, OrderItem, Payment
+from django.utils.html import format_html
+from django.urls import reverse
 
 
 ##### Inline Admin Classes #####
@@ -191,9 +193,6 @@ class PaymentAdmin(admin.ModelAdmin):
     transaction_id_short.short_description = "Transaction ID"
     
     def order_link(self, obj):
-        from django.utils.html import format_html
-        from django.urls import reverse
-        
         url = reverse('admin:orders_order_change', args=[obj.order.id])
         return format_html('<a href="{}">{}</a>', url, obj.order.order_number)
     order_link.short_description = "Order"

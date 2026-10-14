@@ -35,7 +35,7 @@ urlpatterns = [
          views.CreatePaymentView.as_view(), 
          name='create-payment'),
     
-    path('payments/<int:payment_id>/webhook/', 
+    path('orders/payments/<int:payment_id>/webhook/', 
          views.PaymentWebhookView.as_view(), 
          name='payment-webhook'),
     

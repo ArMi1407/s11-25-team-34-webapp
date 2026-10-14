@@ -21,6 +21,7 @@ from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
 from django.conf import settings
 from django.conf.urls.static import static
+from django.http import HttpResponse
 
 # Swagger schema view
 schema_view = get_schema_view(
@@ -33,13 +34,18 @@ schema_view = get_schema_view(
     permission_classes=(permissions.AllowAny,),
 )
 
+
+def home(request):
+    return HttpResponse("¡Good deployment!")
+
 urlpatterns = [
+    path('', home),
     path('admin/', admin.site.urls),
-    path('api/accounts/', include('accounts.urls')),
-    path('api/products/', include('products.urls')), 
-    path('api/cart/', include('cart.urls')),  
-    path('api/orders/', include('orders.urls')),
-    # path('api/rewards/', include('rewards.urls')),  
+    path('api/', include('accounts.urls')),
+    path('api/', include('products.urls')), 
+    path('api/', include('cart.urls')),  
+    path('api/', include('orders.urls')),
+    path('api/rewards/', include('rewards.urls')),  
 
     
     # API Documentation

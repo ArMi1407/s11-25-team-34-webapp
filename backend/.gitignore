@@ -6,8 +6,8 @@ __pycache__/
 # === Enviromnt varible===
 venv/
 .venv/
-env/
-.env/
+env
+.env
 
 # === Variables de entorno ===
 *.env

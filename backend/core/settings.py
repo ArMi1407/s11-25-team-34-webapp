@@ -14,25 +14,57 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 import os
+import dj_database_url
 from dotenv import load_dotenv
 load_dotenv()
-print("USE_CLOUDINARY =", os.getenv("USE_CLOUDINARY"))
-print("USE_CLOUDINARY PARSED =", os.getenv("USE_CLOUDINARY", "False") == "True")
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-
+DEBUG = os.getenv('DEBUG', 'True') == 'True'
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv('SECRET_KEY')
+if not DEBUG:
+    SECRET_KEY = os.environ.get('SECRET_KEY', default='your secret key')
+else:
+    SECRET_KEY = os.getenv('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv('DEBUG', 'True') == 'True'
+
 USE_CLOUDINARY = os.getenv("USE_CLOUDINARY", "False") == "True"
 
-ALLOWED_HOSTS = ['*']
+# Allowed Hosts
+ALLOWED_HOSTS = [
+    "127.0.0.1",
+    "localhost",
+
+    # Frontend Vercel domain (WITHOUT https://)
+    "s11-25-team-34-webapp.vercel.app",
+
+    # Backend Render domain (WITHOUT https://)
+    "ecoshop-ksu6.onrender.com",
+]
+
+# CSRF Trusted Origins
+CSRF_TRUSTED_ORIGINS = [
+    "https://s11-25-team-34-webapp.vercel.app",
+    "https://ecoshop-ksu6.onrender.com",
+]
+#  Render.com deployment settings
+RENDER_EXTERNAL_HOSTNAME = os.environ.get('RENDER_EXTERNAL_HOSTNAME')
+# Add Render hostname to allowed hosts if it exists
+if RENDER_EXTERNAL_HOSTNAME:
+    ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
+
+# CSRF Trusted Origins only for Render deployment
+
+if RENDER_EXTERNAL_HOSTNAME:
+    ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
+    CSRF_TRUSTED_ORIGINS.append(f"https://{RENDER_EXTERNAL_HOSTNAME}")
+
+
 
 
 
@@ -91,6 +123,9 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware', # Cors step 2
     'django.middleware.security.SecurityMiddleware',
+    # WhiteNoise middleware for serving static files
+    "whitenoise.middleware.WhiteNoiseMiddleware",
+
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -98,7 +133,6 @@ MIDDLEWARE = [
     # Store old session key before login
     'core.middleware.StoreOldSessionMiddleware',
 
-    
     'django.middleware.csrf.CsrfViewMiddleware',
     
     'django.contrib.messages.middleware.MessageMiddleware',
@@ -107,10 +141,44 @@ MIDDLEWARE = [
 
 # CORS Configuration - step 3
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",  # React
+    "http://localhost:5173",
     "http://127.0.0.1:5173",
-    # Add other allowed origins as needed
+
+    # Production frontend (Vercel)
+    "https://s11-25-team-34-webapp.vercel.app",
 ]
+CORS_ALLOW_CREDENTIALS = True 
+
+# =====================================================
+# SESSION & CSRF SETTINGS (DEV vs PROD)  👇 PEGAR AQUÍ
+# =====================================================
+
+if DEBUG:
+    # --- DESARROLLO ---
+    SESSION_COOKIE_SECURE = False
+    CSRF_COOKIE_SECURE = False
+
+    SESSION_COOKIE_SAMESITE = "Lax"
+    CSRF_COOKIE_SAMESITE = "Lax"
+
+    SESSION_COOKIE_DOMAIN = None
+    CSRF_COOKIE_DOMAIN = None
+
+else:
+    # --- PRODUCCIÓN ---
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+
+    SESSION_COOKIE_SAMESITE = "None"
+    CSRF_COOKIE_SAMESITE = "None"
+
+    RENDER_HOST = os.environ.get(
+        "RENDER_EXTERNAL_HOSTNAME", 
+        "ecoshop-ksu6.onrender.com"
+    )
+
+    SESSION_COOKIE_DOMAIN = f".{RENDER_HOST}"
+    CSRF_COOKIE_DOMAIN = f".{RENDER_HOST}"
 
 ROOT_URLCONF = 'core.urls'
 
@@ -143,22 +211,29 @@ WSGI_APPLICATION = 'core.wsgi.application'
 #     }
 # }
 
-# MySQL Configuration
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': os.getenv('DB_NAME', 'ecoshop'),
-        'USER': os.getenv('DB_USER', 'root'),
-        'PASSWORD': os.getenv('DB_PASSWORD', 'argentina'),
-        'HOST': os.getenv('DB_HOST', 'localhost'),
-        'PORT': os.getenv('DB_PORT', '3306'),
-        'OPTIONS': {
-            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
-            'charset': 'utf8mb4',
+
+DATABASE_URL = os.environ.get("DATABASE_URL")
+
+if not DEBUG and DATABASE_URL:
+    DATABASES = {
+        'default': dj_database_url.config(
+        # Replace this value with your local database's connection string.
+        default=DATABASE_URL,
+        conn_max_age=600
+        )
+    }
+else:
+    # If there is no DATABASE_URL, use local MySQL
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.mysql",
+            "NAME": os.environ.get("DB_NAME"),
+            "USER": os.environ.get("DB_USER"),
+            "PASSWORD": os.environ.get("DB_PASSWORD"),
+            "HOST": os.environ.get("DB_HOST"),
+            "PORT": os.environ.get("DB_PORT"),
         }
     }
-}
-
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
@@ -195,10 +270,17 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
  # URL to use when referring to static files located in STATIC_ROOT.
-STATIC_URL = 'static/' 
+STATIC_URL = '/static/' 
 # The absolute path to the directory where collectstatic 
 # will collect static files for deployment.
-STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')  
+
+if not DEBUG:
+    STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+    STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+else:
+    STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
+# Simplified static file serving for render
+
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -231,14 +313,22 @@ REST_FRAMEWORK = {
 }
 
 SWAGGER_SETTINGS = {
+    'USE_SESSION_AUTH': False,
     'SECURITY_DEFINITIONS': {
         'Token': {
             'type': 'apiKey',
             'name': 'Authorization',
-            'in': 'header'
+            'in': 'header',
         }
     },
-    'DEFAULT_AUTO_SCHEMA_CLASS': 'core.swagger_fix.FixDuplicateSchema',
-    'DEFAULT_INFO': 'core.urls.schema_view',
+    'DEFAULT_MODEL_RENDERING': 'example',
+    'SWAGGER_UI_BUNDLE_JS': 'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.5.0/swagger-ui-bundle.js',
+    'SWAGGER_UI_STANDALONE_PRESET_JS': 'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.5.0/swagger-ui-standalone-preset.js',
+    'SWAGGER_UI_CSS': 'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.5.0/swagger-ui.css',
+
+    'DEEP_LINKING': True,
+    'SHOW_EXTENSIONS': True,
+    'SHOW_COMMON_EXTENSIONS': True,
 }
+
 

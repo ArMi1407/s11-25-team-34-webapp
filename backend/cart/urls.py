@@ -28,6 +28,6 @@ urlpatterns = [
     # DELETE /api/cart/clear/
     
     # Additional standalone endpoints
-    path('checkout/', views.CheckoutView.as_view(), name='cart-checkout'),
-    path('merge/', views.MergeCartView.as_view(), name='cart-merge'),
+    path('cart/checkout/', views.CheckoutView.as_view(), name='cart-checkout'),
+    path('cart/merge/', views.MergeCartView.as_view(), name='cart-merge'),
 ]
